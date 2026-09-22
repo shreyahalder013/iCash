@@ -1,4 +1,4 @@
-/**
+﻿/**
  * iCash Enterprise Biometric Banking Client Engine
  * Integrates with Beautiful UI component primitives, FaceAPI, and real backend REST API.
  */
@@ -49,10 +49,11 @@ function initAppwrite() {
 // INITIALIZATION & EVENT LISTENERS
 // ============================================================
 window.addEventListener('DOMContentLoaded', async () => {
-  initOtpDigitInputs();
-  initCommandPaletteShortcuts();
-  initThreeBackground();
-  initAppwrite();
+  // Each init step isolated - a failure in one never blocks the rest
+  try { initOtpDigitInputs(); } catch(e) { console.warn('[iCash Init] OTP inputs:', e); }
+  try { initCommandPaletteShortcuts(); } catch(e) { console.warn('[iCash Init] Command palette:', e); }
+  try { initThreeBackground(); } catch(e) { console.warn('[iCash Init] Three.js background:', e); }
+  try { initAppwrite(); } catch(e) { console.warn('[iCash Init] Appwrite:', e); }
 
   // Check if an intentional active session is being restored (e.g. reload while on dashboard)
   try {
@@ -144,7 +145,7 @@ function toggleSidebar() {
   const sidebar = document.getElementById('app-sidebar');
   const btn = document.getElementById('sidebar-toggle-btn');
   sidebar.classList.toggle('collapsed');
-  btn.textContent = sidebar.classList.contains('collapsed') ? '▶' : '◀';
+  btn.textContent = sidebar.classList.contains('collapsed') ? 'â–¶' : 'â—€';
 }
 
 // ============================================================
@@ -221,7 +222,7 @@ function showTransactionDetails(txId) {
     : 'Primary Digital Account';
 
   const statusEl = document.getElementById('drawer-tx-status');
-  statusEl.textContent = `${tx.status || 'COMPLETED'} ✓`;
+  statusEl.textContent = `${tx.status || 'COMPLETED'} âœ“`;
   statusEl.className = `status-badge ${(tx.status || 'completed').toLowerCase()}`;
 
   openDrawer('transaction');
@@ -280,12 +281,12 @@ async function startLogin() {
 
 function startRegistration() {
   goTo('screen-register-form');
-  document.getElementById('reg-name').value = '';
-  document.getElementById('reg-aadhaar').value = '';
-  document.getElementById('reg-mobile').value = '';
-  document.getElementById('reg-pin').value = '';
-  document.getElementById('reg-emergency-pin').value = '';
-  document.getElementById('reg-msg').textContent = '';
+  ['reg-name', 'reg-aadhaar', 'reg-mobile', 'reg-pin', 'reg-emergency-pin'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  const regMsg = document.getElementById('reg-msg');
+  if (regMsg) regMsg.textContent = '';
 }
 
 function formatAadhaar(input) {
@@ -305,7 +306,7 @@ function handleDobChange() {
   const seniorBlock = document.getElementById('reg-senior-block');
   if (age !== null) {
     if (age >= 60) {
-      note.textContent = `Age: ${age} years · Senior Assisted Banking enabled.`;
+      note.textContent = `Age: ${age} years Â· Senior Assisted Banking enabled.`;
       seniorBlock.style.display = 'block';
     } else {
       note.textContent = `Age: ${age} years.`;
@@ -424,7 +425,7 @@ function addRegistrationEmergencyContactRow() {
   row.innerHTML = `
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
       <span style="font-size: 11px; font-weight: 600; color: var(--primary);">Authorized Contact #${count}</span>
-      <button type="button" class="mini-btn" style="padding: 2px 6px; font-size: 10px; color: #ef4444;" onclick="this.closest('.emergency-contact-row').remove()">Remove ✕</button>
+      <button type="button" class="mini-btn" style="padding: 2px 6px; font-size: 10px; color: #ef4444;" onclick="this.closest('.emergency-contact-row').remove()">Remove âœ•</button>
     </div>
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
       <div>
@@ -468,13 +469,13 @@ async function proceedToOtp() {
 // SHARED OTP LOGIC
 // ============================================================
 function maskMobile(mobile) {
-  if (!mobile || !/^\d{10}$/.test(mobile)) return '+91 ••••••••••';
-  return '+91 ••••••' + mobile.slice(-4);
+  if (!mobile || !/^\d{10}$/.test(mobile)) return '+91 â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢';
+  return '+91 â€¢â€¢â€¢â€¢â€¢â€¢' + mobile.slice(-4);
 }
 
 async function startOtpFlow(purpose, mobile) {
   document.getElementById('otp-eyebrow').textContent =
-    purpose === 'register' ? 'Step 2 of 3 · Mobile OTP' : 'Step 2 of 4 · Mobile OTP';
+    purpose === 'register' ? 'Step 2 of 3 Â· Mobile OTP' : 'Step 2 of 4 Â· Mobile OTP';
   document.getElementById('otp-mobile-display').textContent = maskMobile(mobile);
   OTP_DIGIT_IDS.forEach((id) => {
     document.getElementById(id).value = '';
@@ -484,7 +485,7 @@ async function startOtpFlow(purpose, mobile) {
   if (smsBanner) smsBanner.style.display = 'none';
 
   const msg = document.getElementById('otp-msg');
-  msg.textContent = 'Requesting verification code…';
+  msg.textContent = 'Requesting verification codeâ€¦';
   msg.className = 'modal-msg';
   goTo('screen-aadhaar-otp');
 
@@ -501,7 +502,7 @@ async function startOtpFlow(purpose, mobile) {
         smsCodeEl.textContent = displayCode;
         smsBanner.style.display = 'block';
       }
-      showAlertToast(`📲 Verification Code: [ ${displayCode} ]`);
+      showAlertToast(`ðŸ“² Verification Code: [ ${displayCode} ]`);
     }
 
     startOtpCountdown();
@@ -526,7 +527,7 @@ function updateOtpCountdown() {
   }
   const remaining = pendingOtp.expiresAt - Date.now();
   if (remaining <= 0) {
-    el.textContent = 'Code expired — please request a new code';
+    el.textContent = 'Code expired â€” please request a new code';
     clearInterval(otpCountdownTimer);
     return;
   }
@@ -566,7 +567,7 @@ async function verifyOtpCode() {
     return;
   }
 
-  msg.textContent = 'Verifying security code…';
+  msg.textContent = 'Verifying security codeâ€¦';
   msg.className = 'modal-msg';
 
   try {
@@ -577,7 +578,7 @@ async function verifyOtpCode() {
       return;
     }
 
-    msg.textContent = 'Mobile verified ✓';
+    msg.textContent = 'Mobile verified âœ“';
     msg.className = 'modal-msg ok';
     const purpose = pendingOtp.purpose;
     clearInterval(otpCountdownTimer);
@@ -739,7 +740,7 @@ function stopCamera(videoEl) {
 }
 
 // beginRegisterScan / captureRegisterFace / cancelRegisterScan / teardownRegisterScan
-// → Implemented in biometric.js (real face-api.js auto-scan engine)
+// â†’ Implemented in biometric.js (real face-api.js auto-scan engine)
 
 // Login Aadhaar lookup
 async function verifyAadhaarLogin() {
@@ -750,7 +751,7 @@ async function verifyAadhaarLogin() {
     return;
   }
   statusDiv.innerHTML =
-    '<span style="color:var(--text-muted);font-size:12px;">Verifying records…</span>';
+    '<span style="color:var(--text-muted);font-size:12px;">Verifying recordsâ€¦</span>';
 
   try {
     const res = await window.iCashApi.loginAadhaar({ aadhaarLast4: last4 });
@@ -761,7 +762,7 @@ async function verifyAadhaarLogin() {
       return;
     }
     const targetUser = matchingUsers[0];
-    statusDiv.innerHTML = `<span style="color:var(--primary);font-size:12px;">✓ Verified: ${targetUser.name}</span>`;
+    statusDiv.innerHTML = `<span style="color:var(--primary);font-size:12px;">âœ“ Verified: ${targetUser.name}</span>`;
     window._loginTargetUser = targetUser;
     setTimeout(() => {
       goTo('screen-login-scan');
@@ -773,7 +774,7 @@ async function verifyAadhaarLogin() {
 }
 
 // beginLoginScan / captureLoginFace / cancelLoginScan / teardownLoginScan
-// → Implemented in biometric.js (real face-api.js Euclidean matching engine)
+// â†’ Implemented in biometric.js (real face-api.js Euclidean matching engine)
 
 /**
  * promptLoginPin
@@ -783,7 +784,7 @@ async function verifyAadhaarLogin() {
  * to prove that liveness AND server-side face matching both passed.
  *
  * @param {Object} user - The authenticated user object
- * @param {number} confidence - Face match confidence 0–1
+ * @param {number} confidence - Face match confidence 0â€“1
  * @param {string|null} biometricToken - Short-lived JWT from verify-challenge
  */
 function promptLoginPin(user, confidence = 0.95, biometricToken = null) {
@@ -801,13 +802,13 @@ function promptLoginPin(user, confidence = 0.95, biometricToken = null) {
   const banner = document.getElementById('login-pin-banner');
 
   const verifiedBadge =
-    `<span style="color:var(--success);font-size:11px;display:block;margin-top:2px;">✓ Liveness verified · Identity matched · Server-signed</span>`;
+    `<span style="color:var(--success);font-size:11px;display:block;margin-top:2px;">âœ“ Liveness verified Â· Identity matched Â· Server-signed</span>`;
 
   banner.innerHTML = `
     <div class="av">${initials(user.name)}</div>
     <div>
-      <strong>${biometricToken ? 'Biometric Verified' : 'Identity Matched'} — ${user.name}</strong>
-      <span>Match confidence: ${Math.round(confidence * 100)}% · Enter 4-digit security PIN</span>
+      <strong>${biometricToken ? 'Biometric Verified' : 'Identity Matched'} â€” ${user.name}</strong>
+      <span>Match confidence: ${Math.round(confidence * 100)}% Â· Enter 4-digit security PIN</span>
       ${verifiedBadge}
     </div>
   `;
@@ -824,7 +825,7 @@ async function submitLoginPin() {
     return;
   }
 
-  msg.textContent = 'Authenticating…';
+  msg.textContent = 'Authenticatingâ€¦';
   msg.className = 'modal-msg';
 
   try {
@@ -833,7 +834,7 @@ async function submitLoginPin() {
       currentUser = res.user;
       pendingLoginUser = null;
       if (res.isDuress)
-        showAlertToast('🚨 Emergency access mode activated · silent alert logged.', true);
+        showAlertToast('ðŸš¨ Emergency access mode activated Â· silent alert logged.', true);
       enterDashboard();
     }
   } catch (err) {
@@ -853,7 +854,7 @@ async function attemptPinDirectLogin() {
     return;
   }
 
-  msg.textContent = 'Authenticating…';
+  msg.textContent = 'Authenticatingâ€¦';
   msg.className = 'modal-msg';
 
   try {
@@ -867,7 +868,7 @@ async function attemptPinDirectLogin() {
     const res = await window.iCashApi.loginPin({ userId: targetUser.id, pin });
     if (res.ok && res.user) {
       currentUser = res.user;
-      if (res.isDuress) showAlertToast('🚨 Emergency access mode activated.', true);
+      if (res.isDuress) showAlertToast('ðŸš¨ Emergency access mode activated.', true);
       enterDashboard();
     }
   } catch (err) {
@@ -881,9 +882,9 @@ function showMatch(user, isNew) {
   banner.innerHTML = `
     <div class="av">${initials(user.name)}</div>
     <div>
-      <strong>${isNew ? 'Welcome to iCash, ' : 'Identity Confirmed — '}${user.name}</strong>
+      <strong>${isNew ? 'Welcome to iCash, ' : 'Identity Confirmed â€” '}${user.name}</strong>
       <span>${isNew ? 'Account created successfully with primary digital savings wallet.' : 'Session established with bank-grade encryption.'}</span>
-      <span style="font-size:11px;color:var(--primary);display:block;margin-top:4px;">Masked Aadhaar: •••• ${user.aadhaarLast4} ✓</span>
+      <span style="font-size:11px;color:var(--primary);display:block;margin-top:4px;">Masked Aadhaar: â€¢â€¢â€¢â€¢ ${user.aadhaarLast4} âœ“</span>
     </div>
   `;
   goTo('screen-match');
@@ -919,7 +920,7 @@ async function loadDashboardData() {
   const aadhaarEl = document.getElementById('dash-masked-aadhaar');
   if (aadhaarEl) {
     aadhaarEl.textContent = currentUser.aadhaarLast4
-      ? `Aadhaar: •••• ${currentUser.aadhaarLast4}`
+      ? `Aadhaar: â€¢â€¢â€¢â€¢ ${currentUser.aadhaarLast4}`
       : 'Aadhaar: unavailable';
   }
 
@@ -958,20 +959,22 @@ function renderBalanceHero(primaryAcc) {
   const bankLabel = document.getElementById('dash-primary-bank-label');
   const accMask = document.getElementById('dash-primary-acc-mask');
 
-  bankLabel.textContent = primaryAcc.bankName || 'Bank account';
-  accMask.textContent = primaryAcc.accountNumberMasked || 'Account number unavailable';
+  if (bankLabel) bankLabel.textContent = primaryAcc.bankName || "Bank account";
+  if (accMask) accMask.textContent = primaryAcc.accountNumberMasked || "Account number unavailable";
 
-  if (isBalanceHidden) {
-    balEl.textContent = '₹ ••••••';
-  } else {
-    balEl.textContent = fmtMoney(primaryAcc.balance);
+  if (balEl) {
+    if (isBalanceHidden) {
+      balEl.textContent = "₹ ••••••";
+    } else {
+      balEl.textContent = fmtMoney(primaryAcc.balance);
+    }
   }
 }
 
 function toggleBalanceVisibility() {
   isBalanceHidden = !isBalanceHidden;
   const eyeBtn = document.getElementById('balance-eye-btn');
-  eyeBtn.textContent = isBalanceHidden ? '🙈' : '👁️';
+  eyeBtn.textContent = isBalanceHidden ? 'ðŸ™ˆ' : 'ðŸ‘ï¸';
   const primaryAcc = currentAccounts.find((a) => a.isPrimary) ||
     currentAccounts[0] || { balance: 15000 };
   renderBalanceHero(primaryAcc);
@@ -990,13 +993,14 @@ function renderInsightCards(balance, transactions, linkedCount) {
   if (moneyIn === 0) moneyIn = 12500;
   if (moneyOut === 0) moneyOut = 7250;
 
-  document.getElementById('dash-money-in').textContent = fmtMoney(moneyIn);
-  document.getElementById('dash-money-out').textContent = fmtMoney(moneyOut);
-  document.getElementById('dash-available-bal').textContent = isBalanceHidden
-    ? '₹ ••••••'
-    : fmtMoney(balance);
-  document.getElementById('dash-linked-count').textContent =
-    `${linkedCount} ${linkedCount === 1 ? 'Account' : 'Accounts'}`;
+  const miEl = document.getElementById('dash-money-in');
+  const moEl = document.getElementById('dash-money-out');
+  const abEl = document.getElementById('dash-available-bal');
+  const lcEl = document.getElementById('dash-linked-count');
+  if (miEl) miEl.textContent = fmtMoney(moneyIn);
+  if (moEl) moEl.textContent = fmtMoney(moneyOut);
+  if (abEl) abEl.textContent = isBalanceHidden ? '₹ ••••••' : fmtMoney(balance);
+  if (lcEl) lcEl.textContent = `${linkedCount} ${linkedCount === 1 ? 'Account' : 'Accounts'}`;
 }
 
 function renderAccountsGrid(accounts) {
@@ -1020,12 +1024,12 @@ function renderAccountsGrid(accounts) {
           <div class="acc-logo-pill">${a.accountType === 'SAVINGS' ? 'S' : a.accountType === 'CURRENT' ? 'C' : 'V'}</div>
           <div>
             <div class="acc-name-label">${a.bankName} ${a.isPrimary ? '<span style="color:var(--primary);font-size:10px;">(Primary)</span>' : ''}</div>
-            <div class="acc-num-label">${a.accountNumberMasked} · ${a.accountType}</div>
+            <div class="acc-num-label">${a.accountNumberMasked} Â· ${a.accountType}</div>
           </div>
         </div>
         <span class="status-badge completed">${a.status}</span>
       </div>
-      <div class="acc-card-bal">${isBalanceHidden ? '₹ ••••••' : fmtMoney(a.balance)}</div>
+      <div class="acc-card-bal">${isBalanceHidden ? 'â‚¹ â€¢â€¢â€¢â€¢â€¢â€¢' : fmtMoney(a.balance)}</div>
       <div class="acc-card-actions">
         ${!a.isPrimary ? `<button class="mini-btn" onclick="setPrimaryAccount('${a.id}')">Make Primary</button>` : ''}
         <button class="mini-btn" onclick="switchView('transfers')">Transfer</button>
@@ -1086,7 +1090,7 @@ function renderTransactionsTable() {
   const startIdx = (currentPage - 1) * ITEMS_PER_PAGE;
   const pageItems = filteredTransactions.slice(startIdx, startIdx + ITEMS_PER_PAGE);
 
-  const icons = { TRANSFER: '↗', WITHDRAWAL: '↓', DEPOSIT: '✨', PAYMENT: '💳', REFUND: '↺' };
+  const icons = { TRANSFER: 'â†—', WITHDRAWAL: 'â†“', DEPOSIT: 'âœ¨', PAYMENT: 'ðŸ’³', REFUND: 'â†º' };
 
   const rowsHtml = pageItems
     .map((t) => {
@@ -1100,7 +1104,7 @@ function renderTransactionsTable() {
       <tr onclick="showTransactionDetails('${t.id || t.referenceNumber}')">
         <td>
           <div class="tx-entity-cell">
-            <div class="tx-type-icon">${icons[t.type] || '•'}</div>
+            <div class="tx-type-icon">${icons[t.type] || 'â€¢'}</div>
             <div>
               <strong>${t.description || 'Transfer'}</strong>
               <div style="font-size:11px;color:var(--text-faint);font-family:var(--font-mono);">${t.referenceNumber || t.id}</div>
@@ -1134,7 +1138,7 @@ function renderTransactionsTable() {
 
   const pageInfo = document.getElementById('pagination-info');
   if (pageInfo) {
-    pageInfo.textContent = `Showing ${startIdx + 1}–${Math.min(startIdx + ITEMS_PER_PAGE, filteredTransactions.length)} of ${filteredTransactions.length} records`;
+    pageInfo.textContent = `Showing ${startIdx + 1}â€“${Math.min(startIdx + ITEMS_PER_PAGE, filteredTransactions.length)} of ${filteredTransactions.length} records`;
   }
 }
 
@@ -1169,7 +1173,7 @@ function exportStatement() {
   a.href = url;
   a.download = `iCash_Statement_${Date.now()}.csv`;
   a.click();
-  showAlertToast('📄 Bank statement CSV downloaded.');
+  showAlertToast('ðŸ“„ Bank statement CSV downloaded.');
 }
 
 // ============================================================
@@ -1181,7 +1185,7 @@ function populateTransferSourceAccounts() {
   select.innerHTML = currentAccounts
     .map(
       (a) => `
-    <option value="${a.id}">${a.bankName} (${a.accountNumberMasked}) — ${fmtMoney(a.balance)}</option>
+    <option value="${a.id}">${a.bankName} (${a.accountNumberMasked}) â€” ${fmtMoney(a.balance)}</option>
   `
     )
     .join('');
@@ -1229,7 +1233,7 @@ async function confirmDeposit() {
     return;
   }
 
-  msg.textContent = 'Processing deposit…';
+  msg.textContent = 'Processing depositâ€¦';
   msg.className = 'modal-msg';
   if (btn) btn.disabled = true;
 
@@ -1238,7 +1242,7 @@ async function confirmDeposit() {
     if (res.ok) {
       closeModal('deposit');
       document.getElementById('deposit-amt').value = '';
-      showAlertToast(`✓ ${fmtMoney(amt)} deposited successfully.`);
+      showAlertToast(`âœ“ ${fmtMoney(amt)} deposited successfully.`);
       loadDashboardData();
     }
   } catch (err) {
@@ -1302,7 +1306,7 @@ function confirmSend() {
 
 // ============================================================
 // BIOMETRIC VERIFICATION GATE (HUMAN IN THE LOOP)
-// → launchBiometricGate / captureVerifyFace / cancelVerify / teardownVerifyGate
+// â†’ launchBiometricGate / captureVerifyFace / cancelVerify / teardownVerifyGate
 //   implemented in biometric.js (real face-api.js Euclidean matching, multi-face rejection)
 // ============================================================
 
@@ -1338,7 +1342,7 @@ async function executePendingAction() {
     const res = await window.iCashApi.createTransaction(pendingVerificationAction);
     if (res.ok) {
       showAlertToast(
-        `✓ ${pendingVerificationAction.description} of ${fmtMoney(pendingVerificationAction.amount)} authorized.`
+        `âœ“ ${pendingVerificationAction.description} of ${fmtMoney(pendingVerificationAction.amount)} authorized.`
       );
       pendingVerificationAction = null;
       loadDashboardData();
@@ -1349,7 +1353,7 @@ async function executePendingAction() {
       setTimeout(() => {
         closeModal('verify');
         goTo('screen-welcome');
-        showAlertToast('🔒 Session expired. Please sign in again to authorize transactions.', true);
+        showAlertToast('ðŸ”’ Session expired. Please sign in again to authorize transactions.', true);
       }, 1800);
     }
     throw err;
@@ -1374,7 +1378,7 @@ async function submitAddAccount() {
   try {
     await window.iCashApi.createAccount({ bankName: bank, accountType: type, initialBalance: bal });
     closeModal('add-account');
-    showAlertToast(`✓ ${bank} linked successfully.`);
+    showAlertToast(`âœ“ ${bank} linked successfully.`);
     loadDashboardData();
   } catch (err) {
     msg.textContent = err.message;
@@ -1406,7 +1410,7 @@ async function submitComplaint() {
   try {
     await window.iCashApi.createComplaint({ subject, description: desc });
     closeModal('complaint');
-    showAlertToast('⚖️ Grievance ticket submitted for review.');
+    showAlertToast('âš–ï¸ Grievance ticket submitted for review.');
     loadComplaintsList();
   } catch (err) {
     msg.textContent = err.message;
@@ -1480,7 +1484,7 @@ async function populateProfileView() {
   if (!currentUser) return;
   document.getElementById('prof-name').textContent = currentUser.name;
   document.getElementById('prof-phone').textContent = `+91 ${currentUser.phone}`;
-  document.getElementById('prof-aadhaar').textContent = `•••• ${currentUser.aadhaarLast4}`;
+  document.getElementById('prof-aadhaar').textContent = `â€¢â€¢â€¢â€¢ ${currentUser.aadhaarLast4}`;
   document.getElementById('prof-role').textContent = currentUser.role;
   document.getElementById('prof-senior').textContent = currentUser.isSenior
     ? 'Senior Assisted Banking Active'
@@ -1500,14 +1504,14 @@ async function populateProfileView() {
       if (promptBtn) promptBtn.style.display = 'none';
     } else if (isVerified) {
       badgeEl.style.display = 'inline-block';
-      badgeEl.textContent = 'Verified ✓';
+      badgeEl.textContent = 'Verified âœ“';
       badgeEl.style.background = 'rgba(16, 185, 129, 0.15)';
       badgeEl.style.color = '#34d399';
       badgeEl.style.borderColor = 'rgba(16, 185, 129, 0.3)';
       if (promptBtn) promptBtn.style.display = 'none';
     } else {
       badgeEl.style.display = 'inline-block';
-      badgeEl.textContent = 'Unverified ⚠️';
+      badgeEl.textContent = 'Unverified âš ï¸';
       badgeEl.style.background = 'rgba(239, 68, 68, 0.15)';
       badgeEl.style.color = '#f87171';
       badgeEl.style.borderColor = 'rgba(239, 68, 68, 0.3)';
@@ -1572,7 +1576,7 @@ async function openEmailVerificationModal() {
   }
   if (codeInput) codeInput.value = '';
   if (msgEl) {
-    msgEl.textContent = 'Preparing verification code…';
+    msgEl.textContent = 'Preparing verification codeâ€¦';
     msgEl.className = 'modal-msg';
   }
 
@@ -1619,7 +1623,7 @@ async function submitEmailVerification() {
   }
 
   if (msgEl) {
-    msgEl.textContent = 'Verifying code…';
+    msgEl.textContent = 'Verifying codeâ€¦';
     msgEl.className = 'modal-msg';
   }
 
@@ -1631,10 +1635,10 @@ async function submitEmailVerification() {
 
     if (res.ok || res.success) {
       if (msgEl) {
-        msgEl.textContent = 'Email Verified Successfully! ✓';
+        msgEl.textContent = 'Email Verified Successfully! âœ“';
         msgEl.className = 'modal-msg success';
       }
-      showAlertToast('Email verified successfully! Welcome email sent. ✓');
+      showAlertToast('Email verified successfully! Welcome email sent. âœ“');
 
       if (currentUser) {
         currentUser.emailVerified = true;
@@ -1662,7 +1666,7 @@ async function resendEmailVerification() {
   const msgEl = document.getElementById('email-verify-msg');
   const codeInput = document.getElementById('email-verify-code');
   if (msgEl) {
-    msgEl.textContent = 'Requesting fresh verification code…';
+    msgEl.textContent = 'Requesting fresh verification codeâ€¦';
     msgEl.className = 'modal-msg';
   }
 
@@ -1718,12 +1722,12 @@ async function confirmDeleteAccount() {
     return;
   }
   if (btn) btn.disabled = true;
-  msg.textContent = 'Deleting account… this may take a few seconds.';
+  msg.textContent = 'Deleting accountâ€¦ this may take a few seconds.';
   msg.className = 'modal-msg';
   try {
     await window.iCashApi.deleteMe({ pin });
-    // Success — clear local state and navigate to welcome
-    showAlertToast('Your account has been deleted. Redirecting…');
+    // Success â€” clear local state and navigate to welcome
+    showAlertToast('Your account has been deleted. Redirectingâ€¦');
     // Logout client-side state
     currentUser = null;
     currentAccounts = [];
@@ -1818,7 +1822,7 @@ async function submitEmergencyWithdrawalRequest() {
     return;
   }
 
-  msg.textContent = 'Verifying emergency authorization with banking core…';
+  msg.textContent = 'Verifying emergency authorization with banking coreâ€¦';
   msg.className = 'modal-msg';
   if (btn) btn.disabled = true;
 
@@ -1841,12 +1845,12 @@ async function submitEmergencyWithdrawalRequest() {
 
       // Update Step 2 UI
       document.getElementById('emg-holder-phone-badge').textContent =
-        res.accountHolderPhoneMasked || '+91 ••••••0000';
+        res.accountHolderPhoneMasked || '+91 â€¢â€¢â€¢â€¢â€¢â€¢0000';
 
       const devPill = document.getElementById('emg-dev-otp-banner');
       if (res.devOtp) {
         devPill.style.display = 'inline-flex';
-        devPill.innerHTML = `<span>⚡ SMS Dispatched: OTP is <strong>${res.devOtp}</strong></span>`;
+        devPill.innerHTML = `<span>âš¡ SMS Dispatched: OTP is <strong>${res.devOtp}</strong></span>`;
       } else {
         devPill.style.display = 'none';
       }
@@ -1901,7 +1905,7 @@ function startEmergencyCountdown(totalSeconds) {
       clearInterval(_emgCountdownInterval);
       _emgCountdownInterval = null;
       if (msgEl) {
-        msgEl.textContent = '⚠️ The 5-minute authorization window has expired. Please initiate a new request.';
+        msgEl.textContent = 'âš ï¸ The 5-minute authorization window has expired. Please initiate a new request.';
         msgEl.className = 'modal-msg err';
       }
       if (verifyBtn) verifyBtn.disabled = true;
@@ -1926,7 +1930,7 @@ async function submitEmergencyWithdrawalOtp() {
     return;
   }
 
-  msg.textContent = 'Verifying OTP & authorizing instant fund release…';
+  msg.textContent = 'Verifying OTP & authorizing instant fund releaseâ€¦';
   msg.className = 'modal-msg';
   if (btn) btn.disabled = true;
 
@@ -1945,7 +1949,7 @@ async function submitEmergencyWithdrawalOtp() {
       }
 
       // Populate Step 3 Voucher
-      document.getElementById('emg-receipt-amt').textContent = `₹${Number(res.amount).toLocaleString('en-IN')}`;
+      document.getElementById('emg-receipt-amt').textContent = `â‚¹${Number(res.amount).toLocaleString('en-IN')}`;
       document.getElementById('emg-receipt-ref').textContent = res.referenceNumber || res.transactionId || 'TX_EMERGENCY';
       document.getElementById('emg-receipt-date').textContent = new Date().toLocaleString('en-IN', {
         dateStyle: 'medium',
@@ -1955,13 +1959,13 @@ async function submitEmergencyWithdrawalOtp() {
       document.getElementById('emg-receipt-rep').textContent = `${res.authorizedPersonName} (${res.authorizedPersonPhone})`;
       document.getElementById('emg-receipt-idproof').textContent = res.authorizedIdNumber
         ? `${res.authorizedIdType || 'Gov ID'}: ${res.authorizedIdNumber}`
-        : 'Authorized Representative Verified ✓';
+        : 'Authorized Representative Verified âœ“';
 
       document.getElementById('emg-step-1').style.display = 'none';
       document.getElementById('emg-step-2').style.display = 'none';
       document.getElementById('emg-step-3').style.display = 'block';
 
-      showAlertToast(`🚨 Emergency Cash Release Authorized: ₹${Number(res.amount).toLocaleString('en-IN')} released to ${res.authorizedPersonName}.`);
+      showAlertToast(`ðŸš¨ Emergency Cash Release Authorized: â‚¹${Number(res.amount).toLocaleString('en-IN')} released to ${res.authorizedPersonName}.`);
 
       // Refresh dashboard if user is signed in
       if (typeof loadDashboardData === 'function') loadDashboardData();
@@ -1991,7 +1995,7 @@ async function submitPaymentRequest() {
     });
     closeModal('payment-request');
     showAlertToast(
-      `📱 POS Checkout Reference Generated: [ ${res.paymentRequest?.reference_code || 'POS_REF'} ]`
+      `ðŸ“± POS Checkout Reference Generated: [ ${res.paymentRequest?.reference_code || 'POS_REF'} ]`
     );
     loadMerchantPOSList();
   } catch (err) {
@@ -2071,7 +2075,7 @@ async function logout() {
 // ============================================================
 function fmtMoney(amt) {
   const n = Number(amt) || 0;
-  return '₹' + n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return 'â‚¹' + n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function initials(name) {

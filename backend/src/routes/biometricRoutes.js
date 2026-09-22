@@ -13,6 +13,7 @@ const {
 const {
   biometricChallengeLimiter,
   biometricVerifyLimiter,
+  biometricFrameLimiter,
 } = require('../middleware/rateLimitMiddleware');
 
 // ── New secure challenge-based flow ──────────────────────────────────────────
@@ -28,6 +29,18 @@ router.post(
   biometricChallengeLimiter,
   validateRequest(biometricChallengeSchema),
   BiometricChallengeController.issueChallenge
+);
+
+/**
+ * POST /api/biometric/frame
+ *
+ * Streams camera evidence frames directly to the server liveness & anti-spoofing engine.
+ * Rate-limited: 400 per 1 min per IP.
+ */
+router.post(
+  '/frame',
+  biometricFrameLimiter,
+  BiometricChallengeController.submitFrame
 );
 
 /**

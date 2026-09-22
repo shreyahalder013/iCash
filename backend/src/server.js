@@ -93,7 +93,7 @@ app.use(
 app.use((req, res, next) => {
   res.setHeader(
     'Permissions-Policy',
-    'camera=(self), microphone=(), geolocation=(), payment=(self), interest-cohort=()'
+    'camera=(self), microphone=(self), geolocation=(), payment=(self), interest-cohort=()'
   );
   res.removeHeader('Server');
   res.removeHeader('X-Powered-By');

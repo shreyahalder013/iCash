@@ -199,7 +199,10 @@ class AuthService {
 
     let result;
     try {
-      result = await prisma.$transaction(async (tx) => runCreation(tx));
+      result = await prisma.$transaction(async (tx) => runCreation(tx), {
+        maxWait: 15000,
+        timeout: 30000,
+      });
     } catch (txErr) {
       if (txErr.code === 'P2028' || txErr.message?.includes('Transaction not found') || txErr.message?.includes('Transaction API error')) {
         result = await runCreation(prisma);

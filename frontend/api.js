@@ -255,6 +255,9 @@ const api = {
   issueChallenge: (data = {}) =>
     request('/api/biometric/challenge', { method: 'POST', body: data }),
 
+  sendBiometricFrame: (data) =>
+    request('/api/biometric/frame', { method: 'POST', body: data }),
+
   verifyChallenge: (data) =>
     request('/api/biometric/verify-challenge', { method: 'POST', body: data }),
 
@@ -370,15 +373,27 @@ const api = {
   claimSavingReward: (progressId) =>
     request(`/api/v2/savings/progress/${progressId}/claim`, { method: 'POST', body: {} }),
 
+  // Trusted Assistants & Emergency Assistance (Phase 17 & 19)
+  listAssistants: () => request('/api/assistants', { method: 'GET' }),
+  registerAssistant: (data) => request('/api/assistants/register', { method: 'POST', body: data }),
+  getAssistantPermissions: (role) =>
+    request(`/api/assistants/permissions?role=${encodeURIComponent(role || 'TRUSTED_HELPER')}`, { method: 'GET' }),
+  createAssistantDraftTransfer: (data) =>
+    request('/api/assistants/draft-transfer', { method: 'POST', body: data }),
+  requestEmergencyAssistance: (data = {}) =>
+    request('/api/assistants/emergency-assistance', { method: 'POST', body: data }),
+
   // Real-Time Liveness Server (Flask + OpenCV + dlib)
   liveness: {
-    // URL is configurable via window.ICASH_CONFIG.LIVENESS_URL or falls back to localhost.
-    // In production, set window.ICASH_CONFIG.LIVENESS_URL to the deployed liveness server URL.
+    // URL is configurable via window.ICASH_CONFIG.LIVENESS_URL or falls back to localhost in dev.
     get baseUrl() {
       if (typeof window !== 'undefined' && window.ICASH_CONFIG?.LIVENESS_URL) {
         return window.ICASH_CONFIG.LIVENESS_URL.replace(/\/+$/, '');
       }
-      return 'http://127.0.0.1:5001';
+      if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+        return 'http://127.0.0.1:5001';
+      }
+      return '';
     },
 
     start: async function(challengeType) {

@@ -60,7 +60,7 @@ const biometricChallengeSchema = z.object({
 const biometricVerifyChallengeSchema = z.object({
   challengeId:      z.string().uuid('Invalid challenge ID.'),
   nonce:            z.string().regex(/^[0-9a-f]{64}$/, 'Invalid nonce format.'),
-  liveDescriptor:   faceDescriptor,
+  liveDescriptor:   faceDescriptor.optional(),
   userId:           z.string().uuid().optional(),
   // Temporal proof: array of {timestamp, earLeft/leftEAR, earRight/rightEAR, avgEAR, state}
   challengeProof: z.array(z.object({

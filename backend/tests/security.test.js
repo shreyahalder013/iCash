@@ -97,7 +97,7 @@ describe('Security Events & Biometrics APIs', () => {
     expect(verifyRes.status).toBe(200);
     expect(verifyRes.body.ok).toBe(true);
     expect(verifyRes.body.matched).toBe(true);
-    expect(verifyRes.body.biometricToken).toBeDefined();
+    expect(verifyRes.body.userId).toBe(regularUser.id);
   });
 
   test('POST /api/biometric/challenge & verify-challenge flow', async () => {
@@ -127,10 +127,31 @@ describe('Security Events & Biometrics APIs', () => {
     expect(badVerifyRes.body.ok).toBe(false);
 
     // 3. Successfully verify when proof frames and target user are provided
-    const user = await prisma.user.findFirst({ where: { aadhaar_last4: '4821' } });
     const goodChallengeRes = await request(app)
       .post('/api/biometric/challenge')
-      .send({ userIdHint: user.id });
+      .send({ userIdHint: regularUser.id });
+
+    // Generate valid 2-blink temporal proof sequence (>12 frames, >800ms)
+    const validProof = [];
+    let t = 100000;
+    for (let i = 0; i < 6; i++) {
+      validProof.push({ timestamp: t, leftEAR: 0.30, rightEAR: 0.30, state: 'OPEN' });
+      t += 100;
+    }
+    // Blink 1
+    validProof.push({ timestamp: t, leftEAR: 0.12, rightEAR: 0.12, state: 'CLOSED' });
+    t += 160;
+    validProof.push({ timestamp: t, leftEAR: 0.30, rightEAR: 0.30, state: 'OPEN' });
+    t += 350; // debounce gap > 250ms
+    // Blink 2
+    validProof.push({ timestamp: t, leftEAR: 0.12, rightEAR: 0.12, state: 'CLOSED' });
+    t += 160;
+    validProof.push({ timestamp: t, leftEAR: 0.30, rightEAR: 0.30, state: 'OPEN' });
+    t += 100;
+    for (let i = 0; i < 5; i++) {
+      validProof.push({ timestamp: t, leftEAR: 0.30, rightEAR: 0.30, state: 'OPEN' });
+      t += 100;
+    }
 
     const goodVerifyRes = await request(app)
       .post('/api/biometric/verify-challenge')
@@ -138,17 +159,13 @@ describe('Security Events & Biometrics APIs', () => {
         challengeId: goodChallengeRes.body.challengeId,
         nonce: goodChallengeRes.body.nonce,
         liveDescriptor: mockVector,
-        userId: user.id,
-        challengeProof: [
-          { timestamp: Date.now() - 200, earLeft: 0.28, earRight: 0.28 },
-          { timestamp: Date.now() - 100, earLeft: 0.15, earRight: 0.15 },
-          { timestamp: Date.now(), earLeft: 0.28, earRight: 0.28 },
-        ],
+        userId: regularUser.id,
+        challengeProof: validProof,
       });
 
     expect(goodVerifyRes.status).toBe(200);
     expect(goodVerifyRes.body.ok).toBe(true);
     expect(goodVerifyRes.body.biometricToken).toBeDefined();
-    expect(goodVerifyRes.body.userId).toBe(user.id);
+    expect(goodVerifyRes.body.userId).toBe(regularUser.id);
   });
 });

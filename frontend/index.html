@@ -12,7 +12,20 @@
     <meta http-equiv="Permissions-Policy" content="camera=(self), microphone=(), geolocation=(), payment=(self)" />
     <meta http-equiv="X-Content-Type-Options" content="nosniff" />
     <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <!-- Google Fonts: preconnect + non-blocking link (avoids render-blocking @import in CSS) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" />
     <link rel="stylesheet" href="style.css" />
+    <!-- Critical inline CSS: guarantee a visible initial render before style.css fully parses -->
+    <style>
+      html, body { background: #060912; color: #f8fafc; margin: 0; padding: 0; font-family: Inter, system-ui, sans-serif; }
+      .screen { display: none; }
+      .screen.active { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; width: 100%; padding: 24px 20px; box-sizing: border-box; }
+      #screen-dashboard.active { display: block; padding: 0; }
+      #canvas3d { position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: 0.25; }
+      .app-wrapper { position: relative; z-index: 1; min-height: 100vh; }
+    </style>
   </head>
   <body>
     <canvas id="canvas3d"></canvas>
@@ -96,7 +109,7 @@
               <div class="choice-box" onclick="startLogin()">
                 <div class="icon">👁️</div>
                 <h3>Customer Sign In</h3>
-                <p>Authenticate via Aadhaar last 4 digits and facial biometric match.</p>
+                <p>Authenticate instantly via facial biometric match and liveness verification.</p>
               </div>
               <div class="choice-box" onclick="startRegistration()">
                 <div class="icon">✨</div>
@@ -414,166 +427,118 @@
         </div>
       </div>
 
-      <!-- SCREEN: LOGIN AADHAAR LOOKUP -->
-      <div class="screen" id="screen-login-aadhaar">
-        <div class="card card-narrow">
-          <div class="eyebrow">Step 1 of 3 · Identity Lookup</div>
-          <h2>Sign In with Aadhaar</h2>
-          <p class="lead">Enter the last 4 digits of your registered Aadhaar number.</p>
-
-          <div class="field">
-            <label>Last 4 Digits of Aadhaar</label>
-            <input
-              id="login-aadhaar-last4"
-              class="aadhaar-input"
-              placeholder="••••"
-              maxlength="4"
-              inputmode="numeric"
-              autocomplete="off"
-            />
-            <div id="aadhaar-login-status" style="margin-top: 8px"></div>
-          </div>
-
-          <div class="btn-row">
-            <button class="btn btn-ghost" onclick="goTo('screen-welcome')">Back</button>
-            <button class="btn btn-primary" onclick="verifyAadhaarLogin()">Continue &rarr;</button>
-          </div>
-
-          <button
-            class="link-btn"
-            style="margin-top: 14px; width: 100%; text-align: center"
-            onclick="goTo('screen-pin-login')"
-          >
-            Prefer to sign in with PIN directly? &rarr;
-          </button>
-        </div>
-      </div>
-
-      <!-- SCREEN: LOGIN FACE SCAN -->
+      <!-- SCREEN: LOGIN FACE SCAN (SERVER-AUTHORITATIVE 5-STEP UX) -->
       <div class="screen" id="screen-login-scan">
         <div class="scan-wrap">
-          <div class="card card-narrow" style="padding: 24px; text-align: center">
-            <div class="eyebrow">Step 2 of 3 · Biometric Signature</div>
-            <h2>Biometric Authentication</h2>
-            <p class="lead" style="margin-bottom: 16px">
-              Align your face with the scan ring to authenticate.
+          <div class="card card-narrow" style="padding: 24px; text-align: center; position: relative;">
+
+            <!-- Three-Dot Assist Menu -->
+            <div class="assist-overflow" id="assist-overflow">
+              <button
+                class="assist-menu-trigger"
+                id="assist-menu-button"
+                aria-label="Options menu"
+                aria-haspopup="true"
+                aria-expanded="false"
+                aria-controls="assist-menu"
+                onclick="toggleAssistMenu()"
+              >&#8942;</button>
+              <div
+                class="assist-menu"
+                id="assist-menu"
+                role="menu"
+                aria-label="Accessibility and Options"
+                hidden
+              >
+                <button role="menuitem" class="assist-menu-item" onclick="toggleAssistMenu(false); openAssistedVoiceMode();">
+                  <span class="assist-icon">&#127908;</span> Assisted / Voice Mode
+                </button>
+                <button role="menuitem" class="assist-menu-item" onclick="toggleAssistMenu(false); openModal('accessibility-info')">
+                  <span class="assist-icon">&#9855;</span> Accessibility
+                </button>
+                <button role="menuitem" class="assist-menu-item" onclick="toggleAssistMenu(false); goTo('screen-welcome')">
+                  <span class="assist-icon">&#8592;</span> Back to Home
+                </button>
+              </div>
+            </div>
+
+            <div class="eyebrow">Biometric Authentication</div>
+            <h2 style="margin-bottom: 8px;">Face &amp; Liveness Scan</h2>
+            <p class="lead" style="margin-bottom: 14px; font-size: 13px;">
+              Server-authoritative facial identity &amp; two-blink liveness verification.
             </p>
 
-            <div class="scan-frame" style="margin: 0 auto 14px">
-              <video id="login-video" autoplay muted playsinline></video>
-              <canvas id="scan-ring-canvas-login" class="scan-ring-canvas"></canvas>
-              <div class="scan-status" id="login-scan-status">Positioning face&hellip;</div>
+            <!-- Dynamic Server Instruction Banner -->
+            <div id="login-instruction-banner" class="scan-instruction-banner info" role="status" aria-live="assertive" aria-atomic="true">
+              <span id="login-instruction-text">Center your face in the scan frame to begin</span>
             </div>
 
-            <div id="login-blink-dots" style="display: flex; justify-content: center; gap: 10px; margin: 12px 0 6px;">
-              <span class="blink-dot" id="login-dot-1" style="display: inline-block; width: 14px; height: 14px; border-radius: 50%; background: rgba(255,255,255,0.18); border: 1px solid rgba(255,255,255,0.4); transition: all 0.25s;"></span>
-              <span class="blink-dot" id="login-dot-2" style="display: inline-block; width: 14px; height: 14px; border-radius: 50%; background: rgba(255,255,255,0.18); border: 1px solid rgba(255,255,255,0.4); transition: all 0.25s;"></span>
-            </div>
-            <div id="login-blink-instruction" style="font-size: 13px; font-weight: 600; color: var(--primary); margin-bottom: 12px; min-height: 20px;">Align face within circle to begin</div>
-
-            <div class="thinking-trace" style="margin-bottom: 16px; justify-content: center">
-              <span>✦</span>
-              <span>Anti-Spoof Temporal Liveness Gate Active</span>
+            <!-- Camera Preview -->
+            <div class="scan-frame" style="margin: 10px auto 10px; position: relative;">
+              <video id="login-video" autoplay muted playsinline aria-label="Camera preview"></video>
+              <canvas id="scan-ring-canvas-login" class="scan-ring-canvas" aria-hidden="true"></canvas>
+              <div class="scan-status" id="login-scan-status" role="status">Initializing&#8230;</div>
             </div>
 
-            <div id="login-cam-error" class="cam-fallback"></div>
-            <div class="btn-row">
-              <button class="btn btn-ghost" onclick="cancelLoginScan()">Cancel</button>
+            <!-- Liveness Blink Progress -->
+            <div class="blink-progress" id="login-blink-progress" aria-label="Liveness progress">
+              <div class="blink-progress-label">Liveness Check</div>
+              <div class="blink-dots-row">
+                <span class="blink-chip" id="login-dot-1" aria-label="Blink 1 pending">
+                  <span class="blink-num">1</span>
+                  <span class="blink-check">&#10003;</span>
+                </span>
+                <span class="blink-divider"></span>
+                <span class="blink-chip" id="login-dot-2" aria-label="Blink 2 pending">
+                  <span class="blink-num">2</span>
+                  <span class="blink-check">&#10003;</span>
+                </span>
+              </div>
+            </div>
+
+            <!-- 5-Stage Visual Checklist -->
+            <div class="bio-checklist" id="login-bio-checklist" role="list" aria-label="Biometric Verification Steps">
+              <div class="bio-step active" id="login-step-1" role="listitem">
+                <span class="step-num" aria-hidden="true">1</span>
+                <span class="step-label">Center Face</span>
+              </div>
+              <div class="bio-step pending" id="login-step-2" role="listitem">
+                <span class="step-num" aria-hidden="true">2</span>
+                <span class="step-label">Live Check</span>
+              </div>
+              <div class="bio-step pending" id="login-step-3" role="listitem">
+                <span class="step-num" aria-hidden="true">3</span>
+                <span class="step-label">Blink Challenge</span>
+              </div>
+              <div class="bio-step pending" id="login-step-4" role="listitem">
+                <span class="step-num" aria-hidden="true">4</span>
+                <span class="step-label">Identity Match</span>
+              </div>
+              <div class="bio-step pending" id="login-step-5" role="listitem">
+                <span class="step-num" aria-hidden="true">5</span>
+                <span class="step-label">Authorized</span>
+              </div>
+            </div>
+
+            <div id="login-cam-error" class="cam-fallback" role="alert"></div>
+
+            <div class="btn-row" style="margin-top: 14px; justify-content: center;">
+              <button class="btn btn-ghost" onclick="cancelLoginScan()" aria-label="Cancel biometric authentication">Cancel</button>
               <button
                 class="btn btn-ghost"
                 id="login-retry-cam-btn"
                 style="display: none"
                 onclick="beginLoginScan()"
-              >
-                Retry Camera
-              </button>
-              <button
-                class="btn btn-primary"
-                id="login-capture-btn"
-                onclick="captureLoginFace()"
-                disabled
-              >
-                Scan &amp; Authenticate
-              </button>
+                aria-label="Retry camera"
+              >Retry Camera</button>
             </div>
-            <button class="link-btn" style="margin-top: 10px" onclick="goTo('screen-pin-login')">
-              Camera unavailable? Sign in with PIN
-            </button>
-          </div>
-        </div>
-      </div>
 
-      <!-- SCREEN: LOGIN PIN CONFIRMATION -->
-      <div class="screen" id="screen-login-pin">
-        <div class="scan-wrap">
-          <div class="identity-banner" id="login-pin-banner"></div>
-          <div class="card card-narrow" style="padding: 24px">
-            <div class="eyebrow">Step 3 of 3 · Security PIN</div>
-            <h2>Confirm Security PIN</h2>
-            <p class="lead">
-              Biometric identity verified. Enter your 4-digit PIN to access accounts.
-            </p>
-            <form id="form-login-pin" onsubmit="event.preventDefault(); submitLoginPin();">
-              <div class="field">
-                <label>4-Digit Security PIN</label>
-                <input
-                  id="login-pin-input"
-                  placeholder="••••"
-                  maxlength="4"
-                  type="password"
-                  inputmode="numeric"
-                  autocomplete="current-password"
-                />
-              </div>
-              <div class="modal-msg" id="login-pin-msg"></div>
-              <div class="btn-row">
-                <button type="button" class="btn btn-ghost" onclick="goTo('screen-welcome')">Cancel</button>
-                <button type="submit" class="btn btn-primary">
-                  Authorize &amp; Enter
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      </div>
+            <div class="thinking-trace" style="margin-top: 12px; justify-content: center;">
+              <span aria-hidden="true">&#10022;</span>
+              <span>128D ResNet Embedding &amp; Server-Side PAD Active</span>
+            </div>
 
-      <!-- SCREEN: DIRECT PIN FALLBACK -->
-      <div class="screen" id="screen-pin-login">
-        <div class="card card-narrow">
-          <div class="eyebrow">Customer Access</div>
-          <h2>Sign In with Aadhaar &amp; PIN</h2>
-          <p class="lead">
-            Direct authorization for customers using standard security credentials.
-          </p>
-          <form id="form-pin-login" onsubmit="event.preventDefault(); attemptPinDirectLogin();">
-            <div class="field">
-              <label>Last 4 Digits of Aadhaar</label>
-              <input
-                id="pin-login-aadhaar"
-                type="text"
-                placeholder="••••"
-                maxlength="4"
-                inputmode="numeric"
-                autocomplete="off"
-              />
-            </div>
-            <div class="field">
-              <label>4-Digit PIN</label>
-              <input
-                id="pin-login-pin"
-                placeholder="••••"
-                maxlength="4"
-                type="password"
-                inputmode="numeric"
-                autocomplete="current-password"
-              />
-            </div>
-            <div class="modal-msg" id="pin-login-msg"></div>
-            <div class="btn-row">
-              <button type="button" class="btn btn-ghost" onclick="goTo('screen-welcome')">Back</button>
-              <button type="submit" class="btn btn-primary">Sign In</button>
-            </div>
-          </form>
+          </div>
         </div>
       </div>
 
@@ -2416,10 +2381,92 @@
       src="https://cdn.jsdelivr.net/npm/appwrite@17.0.0/dist/iife/sdk.min.js"
       crossorigin="anonymous"
     ></script>
+      <!-- MODAL: ASSISTED / VOICE MODE -->
+      <div class="modal-backdrop" id="modal-assisted-voice" role="dialog" aria-modal="true" aria-labelledby="voice-modal-title">
+        <div class="modal" style="max-width: 500px;">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px;">
+            <div>
+              <div class="eyebrow">Accessibility Feature</div>
+              <h2 id="voice-modal-title" style="font-size: 22px; margin-bottom: 4px;">Assisted / Voice Mode</h2>
+              <p style="color: var(--text-muted); font-size: 13px;">Speak commands to navigate and initiate transactions.</p>
+            </div>
+            <button class="modal-close-btn" onclick="closeAssistedVoiceMode()" aria-label="Close voice mode">&#10005;</button>
+          </div>
+
+          <!-- Mic Button -->
+          <div style="text-align: center; margin: 18px 0 12px;">
+            <button
+              id="voice-banking-mic-btn"
+              class="mic-fab"
+              onclick="window.iCashVoice && window.iCashVoice.toggleListening()"
+              aria-label="Start voice command listening"
+              aria-pressed="false"
+            >&#127908;</button>
+            <p id="voice-mode-status" style="font-size: 12px; color: var(--text-muted); margin-top: 10px; min-height: 18px; font-family: var(--font-mono);">Tap to speak a command</p>
+          </div>
+
+          <!-- Voice Feedback -->
+          <div id="voice-mode-feedback" class="voice-feedback-box" aria-live="polite" aria-atomic="true" style="display:none;"></div>
+
+          <!-- Commands Reference -->
+          <div class="voice-commands-grid">
+            <div class="voice-cmd-chip" onclick="window.iCashVoice&&window.iCashVoice.handleCommand('show balance')" role="button" tabindex="0">&#128176; Show Balance</div>
+            <div class="voice-cmd-chip" onclick="window.iCashVoice&&window.iCashVoice.handleCommand('show transactions')" role="button" tabindex="0">&#128203; Transactions</div>
+            <div class="voice-cmd-chip" onclick="window.iCashVoice&&window.iCashVoice.handleCommand('transfer money')" role="button" tabindex="0">&#8593; Transfer</div>
+            <div class="voice-cmd-chip" onclick="window.iCashVoice&&window.iCashVoice.handleCommand('withdraw money')" role="button" tabindex="0">&#8595; Withdraw</div>
+            <div class="voice-cmd-chip" onclick="window.iCashVoice&&window.iCashVoice.handleCommand('pay bills')" role="button" tabindex="0">&#128179; Pay Bills</div>
+            <div class="voice-cmd-chip" onclick="window.iCashVoice&&window.iCashVoice.handleCommand('help')" role="button" tabindex="0">&#10067; Help</div>
+          </div>
+
+          <!-- Voice Controls -->
+          <div style="display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap;">
+            <button class="btn btn-ghost" style="flex:1; min-width:80px; font-size:12px;" onclick="window.iCashAccessibility&&window.iCashAccessibility.muteVoice()" aria-label="Mute voice feedback">&#128263; Mute</button>
+            <button class="btn btn-ghost" style="flex:1; min-width:80px; font-size:12px;" onclick="window.iCashAccessibility&&window.iCashAccessibility.repeatLast()" aria-label="Repeat last message">&#128260; Repeat</button>
+            <button class="btn btn-ghost" style="flex:1; min-width:80px; font-size:12px;" onclick="window.speechSynthesis&&window.speechSynthesis.cancel()" aria-label="Stop speaking">&#9209; Stop</button>
+          </div>
+
+          <div class="btn-row" style="margin-top: 14px;">
+            <button class="btn btn-primary" onclick="closeAssistedVoiceMode()">Close Assisted Mode</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODAL: ACCESSIBILITY INFO -->
+      <div class="modal-backdrop" id="modal-accessibility-info" role="dialog" aria-modal="true" aria-labelledby="acc-modal-title">
+        <div class="modal" style="max-width: 420px; text-align: left;">
+          <h2 id="acc-modal-title" style="font-size: 20px; margin-bottom: 12px;">Accessibility Options</h2>
+          <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 16px;">iCash is designed to be fully accessible. Use the options below to customize your experience.</p>
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:13px;">
+              <input type="checkbox" id="acc-high-contrast" onchange="toggleHighContrast(this.checked)" style="width:18px;height:18px;" />
+              High Contrast Mode
+            </label>
+            <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:13px;">
+              <input type="checkbox" id="acc-large-text" onchange="toggleLargeText(this.checked)" style="width:18px;height:18px;" />
+              Large Text Mode
+            </label>
+            <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:13px;">
+              <input type="checkbox" id="acc-reduce-motion" onchange="toggleReduceMotion(this.checked)" style="width:18px;height:18px;" />
+              Reduce Motion
+            </label>
+            <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:13px;">
+              <input type="checkbox" id="acc-voice-guidance" onchange="toggleVoiceGuidance(this.checked)" style="width:18px;height:18px;" />
+              Voice Guidance On
+            </label>
+          </div>
+          <div class="btn-row" style="margin-top: 20px;">
+            <button class="btn btn-primary" onclick="closeModal('accessibility-info')">Done</button>
+          </div>
+        </div>
+      </div>
+
+    <!-- Application Script Bundles -->
     <script src="config.js"></script>
+    <script src="accessibility.js"></script>
     <script src="lib/appwrite.js"></script>
     <script src="api.js"></script>
     <script src="biometric.js"></script>
+    <script src="voice-banking.js"></script>
     <script src="script.js"></script>
   </body>
 </html>

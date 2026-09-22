@@ -34,6 +34,7 @@ const receiptRoutes = require('./receiptRoutes');
 const savingsRoutes = require('./savingsRoutes');
 const merchantAnalyticsRoutes = require('./merchantAnalyticsRoutes');
 const subscriptionRoutes = require('./subscriptionRoutes');
+const assistantRoutes = require('./assistantRoutes');
 
 /**
  * Registers all API routes onto the given Express application.
@@ -60,6 +61,7 @@ function registerRoutes(app) {
   app.use('/api/complaints', complaintRoutes);
   app.use('/api/admin', adminRoutes);
   app.use('/api/merchant', merchantRoutes);
+  app.use('/api/assistants', assistantRoutes);
 
   // V2 Advanced Services & Intelligence APIs
   app.use('/api/v2/transactions', transactionRoutes);
@@ -96,4 +98,5 @@ module.exports = {
   savingsRoutes,
   merchantAnalyticsRoutes,
   subscriptionRoutes,
+  assistantRoutes,
 };

@@ -75,11 +75,28 @@ const biometricVerifyLimiter = rateLimit({
   },
 });
 
+/**
+ * Biometric frame ingestion limiter.
+ * Allows up to 400 frames per minute per IP for live camera evidence streaming.
+ */
+const biometricFrameLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: process.env.NODE_ENV === 'test' ? 5000 : 400,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    ok: false,
+    error: 'TooManyRequests',
+    message: 'Biometric streaming limit reached. Please pause a moment.',
+  },
+});
+
 module.exports = {
   authLimiter,
   transactionLimiter,
   generalApiLimiter,
   biometricChallengeLimiter,
   biometricVerifyLimiter,
+  biometricFrameLimiter,
 };
 

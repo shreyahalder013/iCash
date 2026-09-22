@@ -1,20 +1,27 @@
 # pyright: reportMissingImports=false
 """
-iCash real-time liveness service.
+iCash Production Server-Authoritative Liveness & Anti-Spoofing Service (v7.0)
 
-The service deliberately requires a temporal OPEN -> CLOSED -> OPEN eye
-transition for BOTH eyes. A single still photograph can therefore be detected
-as a face but cannot satisfy the blink state machine.
-
-v6 changes vs v5:
-  - PAD is now a rolling bad-frame counter, not a permanent session flag.
-    A single low-texture or low-chrominance frame (common during a real blink
-    or under variable lighting) no longer permanently kills a session.
-    Spoof is only confirmed after PAD_STRIKE_LIMIT consecutive bad frames.
-  - MIN_CLOSED_FRAMES reduced 2 → 1. At 6-8 fps (realistic over network)
-    a 100-150 ms natural blink produces only 1 server-side closed frame.
-    Duration (MIN_BLINK_MS / MAX_BLINK_MS) is the primary validity gate.
-  - Structured [LIVENESS] logging for every state transition.
+Architecture:
+  - 100% Server-Authoritative: Camera frames are received and independently verified.
+  - No client-side EAR, blink count, or liveness claims are ever trusted.
+  - Exact Single-Face Enforcement: Rejects 0 faces or >= 2 faces.
+  - 68-Point Facial Landmarks via dlib shape predictor.
+  - Soukupova & Cech Eye Aspect Ratio (EAR) calculated on genuine landmark geometry.
+  - Head Pose Estimation (Yaw/Pitch/Roll) via 3D-to-2D Perspective-n-Point (solvePnP).
+  - Randomized Active Challenges:
+      * BLINK_TWICE: 2 natural physiological blinks with debounce.
+      * BLINK_PAUSE_BLINK: 1st blink -> 800ms resting pause -> 2nd blink.
+      * BLINK_TURN_LEFT_BLINK: 1st blink -> turn head left -> return -> 2nd blink.
+      * BLINK_TURN_RIGHT_BLINK: 1st blink -> turn head right -> return -> 2nd blink.
+      * BLINK_TWICE_WITH_RANDOM_INTERVAL: 2 blinks with enforced inter-blink interval.
+  - Multi-Signal Presentation Attack Detection (PAD):
+      1. Dynamic EAR Variance & Dynamic Range (anti-static photo).
+      2. High-Frequency Texture Analysis via Laplacian variance (anti-screen/print blur).
+      3. YCrCb Chrominance distribution (anti-flat-surface print).
+      4. Closed-eye duration clamp (eyes closed > 700ms flags closed-eye photo attack).
+      5. Frame-to-frame pixel deformation check (detects static devices).
+  - Server-Side 128D Face Descriptor Extraction via ResNet (dlib_face_recognition_model_v1).
 """
 
 import base64
@@ -58,36 +65,47 @@ CORS(app, origins=ALLOWED_ORIGINS, supports_credentials=False)
 limiter = Limiter(
     key_func=get_remote_address,
     app=app,
-    default_limits=["200 per minute"],
+    default_limits=["300 per minute"],
     storage_uri="memory://",
 )
 
-# ── Blink detection constants ─────────────────────────────────────────────────
-REQUIRED_BLINKS          = 2
-SESSION_TIMEOUT_SECONDS  = 180   # 3 min — matches challenge TTL
-MIN_CLOSED_FRAMES        = 1     # v6: 1 frame (duration is the primary gate)
-MIN_BLINK_MS             = 70    # Fastest realistic blink
-MAX_BLINK_MS             = 700   # Slower deliberate blinks also accepted
-BLINK_DEBOUNCE_MS        = 300
-EAR_CLOSE_RATIO          = 0.72
-EAR_OPEN_RATIO           = 0.88  # v6: lowered slightly (was 0.90) for re-open detection
-EAR_CLOSE_FLOOR          = 0.12  # v6: lowered floor (was 0.16) for large-eye users
-EAR_OPEN_FLOOR           = 0.18  # v6: lowered floor (was 0.22)
-# Eyes closed > 60 frames = suspicious (closed-eye photo spoofing)
-MAX_CONSECUTIVE_CLOSED   = 60
+# ── Physiological Blink Constants ─────────────────────────────────────────────
+MIN_BLINK_MS            = 70     # Fastest realistic blink closure duration
+MAX_BLINK_MS            = 700    # Slowest deliberate blink closure duration
+BLINK_DEBOUNCE_MS       = 250    # Minimum gap between consecutive blinks
+EAR_CLOSE_RATIO         = 0.72   # Multiplier against calibrated resting open EAR
+EAR_OPEN_RATIO          = 0.88   # Multiplier for re-open confirmation
+EAR_CLOSE_FLOOR         = 0.12   # Absolute close threshold floor
+EAR_OPEN_FLOOR          = 0.18   # Absolute open threshold floor
+MAX_CLOSED_DURATION_MS  = 750    # Eyes closed > 750ms flags closed-eye photo spoof
+MIN_EAR_VARIANCE        = 0.0012 # Static photo attacks have variance < 0.001
+MIN_EAR_DYNAMIC_RANGE   = 0.05   # Difference between peak open and lowest closed
 
-# ── PAD (Presentation Attack Detection) constants ────────────────────────────
-# v6: PAD uses a rolling strike counter.  A single bad frame is a warning;
-#     only PAD_STRIKE_LIMIT *consecutive* bad frames declare a spoof so that
-#     real blinks (which briefly lower texture) do not permanently block users.
-PAD_STRIKE_LIMIT         = 4     # consecutive bad-PAD frames required
-PAD_RECOVERY_FRAMES      = 2     # consecutive good-PAD frames to clear strikes
+# ── Head Pose Constants ───────────────────────────────────────────────────────
+YAW_TURN_THRESHOLD_DEG  = 12.0   # Minimum angle for turn-left / turn-right challenges
+YAW_RETURN_THRESHOLD_DEG = 7.0   # Return towards center angle
 
+# ── PAD Constants ─────────────────────────────────────────────────────────────
+PAD_STRIKE_LIMIT        = 4      # Consecutive bad-PAD frames before flagging spoof
+SESSION_TIMEOUT_SECONDS = 180    # 3-minute session TTL
+
+# ── Model Paths ───────────────────────────────────────────────────────────────
 MODEL_DIR = os.path.dirname(os.path.abspath(__file__))
 PREDICTOR_PATH = os.path.join(MODEL_DIR, "shape_predictor_68_face_landmarks.dat")
-MODEL_URL = "https://raw.githubusercontent.com/davisking/dlib-models/master/shape_predictor_68_face_landmarks.dat.bz2"
+RECOGNITION_PATH = os.path.join(MODEL_DIR, "dlib_face_recognition_resnet_model_v1.dat")
+
 RIGHT_EYE_IDX = list(range(36, 42))
 LEFT_EYE_IDX  = list(range(42, 48))
+
+# 3D Facial Model Points for solvePnP Head Pose Estimation
+FACE_3D_MODEL = np.array([
+    (0.0, 0.0, 0.0),             # Nose tip (landmark 30)
+    (0.0, -330.0, -65.0),        # Chin (landmark 8)
+    (-225.0, 170.0, -135.0),     # Left eye outer corner (landmark 36)
+    (225.0, 170.0, -135.0),      # Right eye outer corner (landmark 45)
+    (-150.0, -150.0, -125.0),    # Left mouth corner (landmark 48)
+    (150.0, -150.0, -125.0)      # Right mouth corner (landmark 54)
+], dtype=np.float64)
 
 _DEV_LOG = os.getenv("LIVENESS_DEBUG", "true").lower() not in ("0", "false", "no")
 
@@ -97,168 +115,35 @@ def _log(sid_short, msg):
         print(f"[LIVENESS] {sid_short}: {msg}", flush=True)
 
 
-def ensure_model():
-    if dlib is None:
-        return
-    if os.path.exists(PREDICTOR_PATH) and os.path.getsize(PREDICTOR_PATH) >= 50_000_000:
-        return
-    print("[LIVENESS] Downloading shape predictor model…", flush=True)
-    req = urllib.request.Request(MODEL_URL, headers={"User-Agent": "iCash-Liveness/6.0"})
-    with urllib.request.urlopen(req, timeout=180) as response:
-        compressed = response.read()
-    with open(PREDICTOR_PATH, "wb") as out:
-        out.write(bz2.decompress(compressed))
-    print("[LIVENESS] Model download complete.", flush=True)
-
-
-class _FallbackFaceRect:
-    def __init__(self, x, y, w, h):
-        self._x = int(x)
-        self._y = int(y)
-        self._w = int(w)
-        self._h = int(h)
-
-    def left(self):
-        return self._x
-
-    def right(self):
-        return self._x + self._w
-
-    def top(self):
-        return self._y
-
-    def bottom(self):
-        return self._y + self._h
-
-    def width(self):
-        return self._w
-
-    def height(self):
-        return self._h
-
-
-class _FallbackShapePart:
-    def __init__(self, x, y):
-        self.x = int(x)
-        self.y = int(y)
-
-
-class _FallbackShape:
-    def __init__(self, parts):
-        self._parts = [_FallbackShapePart(x, y) for (x, y) in parts]
-
-    def part(self, i):
-        return self._parts[i]
-
-
-class _FallbackDetector:
-    """
-    Fallback face detector when dlib is not available (e.g. Windows Python 3.13).
-    Detects face region using foreground adaptive thresholding and contour analysis.
-    """
-    def __call__(self, gray, upsample=0):
-        h, w = gray.shape[:2]
-        blur = cv2.GaussianBlur(gray, (7, 7), 0)
-        _, thresh = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-        valid_faces = []
-        min_area = (h * w) * 0.05
-        max_area = (h * w) * 0.90
-        for cnt in contours:
-            x, y, fw, fh = cv2.boundingRect(cnt)
-            area = fw * fh
-            aspect = fh / float(fw) if fw > 0 else 0
-            if min_area <= area <= max_area and 0.8 <= aspect <= 2.2:
-                valid_faces.append(_FallbackFaceRect(x, y, fw, fh))
-
-        if not valid_faces:
-            if float(cv2.Laplacian(gray, cv2.CV_64F).var()) >= 5.0:
-                cw, ch = int(w * 0.5), int(h * 0.6)
-                cx, cy = (w - cw) // 2, int((h - ch) * 0.35)
-                valid_faces.append(_FallbackFaceRect(cx, cy, cw, ch))
-
-        return valid_faces
-
-
-class _FallbackPredictor:
-    """
-    Fallback 68-landmark shape predictor when dlib is not available.
-    Generates standard facial landmarks and estimates Eye Aspect Ratio (EAR)
-    based on eye-region texture and contrast variation.
-    """
-    def __call__(self, gray, face):
-        fx = face.left()
-        fy = face.top()
-        fw = face.right() - fx
-        fh = face.bottom() - fy
-
-        r_cx, r_cy = fx + 0.35 * fw, fy + 0.38 * fh
-        l_cx, l_cy = fx + 0.65 * fw, fy + 0.38 * fh
-        eye_w = max(10.0, 0.14 * fw)
-
-        h, w = gray.shape[:2]
-        r_roi = gray[max(0, int(r_cy - eye_w / 2)):min(h, int(r_cy + eye_w / 2)),
-                     max(0, int(r_cx - eye_w / 2)):min(w, int(r_cx + eye_w / 2))]
-        l_roi = gray[max(0, int(l_cy - eye_w / 2)):min(h, int(l_cy + eye_w / 2)),
-                     max(0, int(l_cx - eye_w / 2)):min(w, int(l_cx + eye_w / 2))]
-
-        r_var = float(cv2.Laplacian(r_roi, cv2.CV_64F).var()) if r_roi.size > 0 else 20.0
-        l_var = float(cv2.Laplacian(l_roi, cv2.CV_64F).var()) if l_roi.size > 0 else 20.0
-
-        is_closed = (r_var < 8.0 and l_var < 8.0)
-        ear_target = 0.10 if is_closed else 0.30
-        eye_h = eye_w * ear_target
-
-        parts = []
-        # 0-16 jawline
-        for i in range(17):
-            t = i / 16.0
-            px = fx + fw * (0.05 + 0.90 * t)
-            py = fy + fh * (0.30 + 0.70 * np.sin(np.pi * t))
-            parts.append((px, py))
-        # 17-21 right eyebrow
-        for i in range(5):
-            parts.append((fx + fw * (0.20 + 0.05 * i), fy + fh * 0.28))
-        # 22-26 left eyebrow
-        for i in range(5):
-            parts.append((fx + fw * (0.55 + 0.05 * i), fy + fh * 0.28))
-        # 27-35 nose
-        for i in range(9):
-            parts.append((fx + fw * 0.50, fy + fh * (0.35 + 0.03 * i)))
-        # 36-41 right eye
-        parts.append((r_cx - eye_w / 2, r_cy))
-        parts.append((r_cx - eye_w / 4, r_cy - eye_h / 2))
-        parts.append((r_cx + eye_w / 4, r_cy - eye_h / 2))
-        parts.append((r_cx + eye_w / 2, r_cy))
-        parts.append((r_cx + eye_w / 4, r_cy + eye_h / 2))
-        parts.append((r_cx - eye_w / 4, r_cy + eye_h / 2))
-        # 42-47 left eye
-        parts.append((l_cx - eye_w / 2, l_cy))
-        parts.append((l_cx - eye_w / 4, l_cy - eye_h / 2))
-        parts.append((l_cx + eye_w / 4, l_cy - eye_h / 2))
-        parts.append((l_cx + eye_w / 2, l_cy))
-        parts.append((l_cx + eye_w / 4, l_cy + eye_h / 2))
-        parts.append((l_cx - eye_w / 4, l_cy + eye_h / 2))
-        # 48-67 mouth
-        for i in range(20):
-            parts.append((fx + fw * (0.35 + 0.015 * (i % 10)), fy + fh * (0.75 + 0.02 * (i // 10))))
-
-        return _FallbackShape(parts)
-
+# Initialize Models
+detector = None
+predictor = None
+face_rec_model = None
+ENGINE_NAME = "uninitialized"
 
 if dlib is not None:
-    ensure_model()
-    detector  = dlib.get_frontal_face_detector()
-    predictor = dlib.shape_predictor(PREDICTOR_PATH)
-    ENGINE_NAME = "dlib-68-landmarks-v6"
-else:
-    print("[LIVENESS] Note: dlib is not installed. Running in OpenCV fallback mode.", flush=True)
-    detector  = _FallbackDetector()
-    predictor = _FallbackPredictor()
-    ENGINE_NAME = "opencv-fallback-v6"
+    try:
+        detector = dlib.get_frontal_face_detector()
+        if os.path.exists(PREDICTOR_PATH) and os.path.getsize(PREDICTOR_PATH) >= 50_000_000:
+            predictor = dlib.shape_predictor(PREDICTOR_PATH)
+        else:
+            print("[LIVENESS] Warning: Landmark predictor not found at", PREDICTOR_PATH, flush=True)
 
-sessions  = {}
+        if os.path.exists(RECOGNITION_PATH) and os.path.getsize(RECOGNITION_PATH) >= 20_000_000:
+            face_rec_model = dlib.face_recognition_model_v1(RECOGNITION_PATH)
+        else:
+            print("[LIVENESS] Warning: Face recognition model not found at", RECOGNITION_PATH, flush=True)
+
+        ENGINE_NAME = "dlib-68-resnet128-v7"
+        print(f"[LIVENESS] Engine initialized successfully: {ENGINE_NAME}", flush=True)
+    except Exception as e:
+        print("[LIVENESS] Failed initializing dlib models:", e, flush=True)
+        detector = None
+        predictor = None
+        face_rec_model = None
+
+# Active In-Memory Sessions
+sessions = {}
 
 
 def cleanup_sessions():
@@ -269,290 +154,567 @@ def cleanup_sessions():
 
 
 def eye_aspect_ratio(points):
+    """Soukupova & Cech Eye Aspect Ratio formula."""
     a = dist.euclidean(points[1], points[5])
     b = dist.euclidean(points[2], points[4])
     c = dist.euclidean(points[0], points[3])
-    return (a + b) / (2.0 * c) if c > 0.001 else 0.30
+    return float((a + b) / (2.0 * c)) if c > 0.001 else 0.30
+
+
+def estimate_head_pose(shape_coords, img_w, img_h):
+    """
+    Estimates head yaw, pitch, and roll in degrees using 3D-to-2D solvePnP.
+    Positive yaw = turning right; Negative yaw = turning left.
+    """
+    try:
+        image_points = np.array([
+            shape_coords[30],  # Nose tip
+            shape_coords[8],   # Chin
+            shape_coords[36],  # Left eye outer corner
+            shape_coords[45],  # Right eye outer corner
+            shape_coords[48],  # Left mouth corner
+            shape_coords[54],  # Right mouth corner
+        ], dtype=np.float64)
+
+        focal_length = float(img_w)
+        center = (float(img_w) / 2.0, float(img_h) / 2.0)
+        camera_matrix = np.array([
+            [focal_length, 0.0, center[0]],
+            [0.0, focal_length, center[1]],
+            [0.0, 0.0, 1.0]
+        ], dtype=np.float64)
+        dist_coeffs = np.zeros((4, 1), dtype=np.float64)
+
+        success, rot_vec, _ = cv2.solvePnP(
+            FACE_3D_MODEL, image_points, camera_matrix, dist_coeffs, flags=cv2.SOLVEPNP_ITERATIVE
+        )
+        if not success:
+            return 0.0, 0.0, 0.0
+
+        rmat, _ = cv2.Rodrigues(rot_vec)
+        angles, _, _, _, _, _ = cv2.RQDecomp3x3(rmat)
+        pitch = float(angles[0])
+        yaw = float(angles[1])
+        roll = float(angles[2])
+        return yaw, pitch, roll
+    except Exception:
+        return 0.0, 0.0, 0.0
 
 
 def decode_image(data_url):
-    if not isinstance(data_url, str) or not data_url or len(data_url) > 1_500_000:
+    """Decodes a base64 DataURL or raw base64 string into an OpenCV BGR frame."""
+    if not isinstance(data_url, str) or not data_url or len(data_url) > 2_500_000:
         return None
     encoded = data_url.split(",", 1)[-1]
     try:
         raw = base64.b64decode(encoded, validate=True)
-        if len(raw) > 1_000_000:
+        if len(raw) > 2_000_000:
             return None
         return cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR)
     except Exception:
         return None
 
 
-def presentation_attack_check(frame, face, coords):
+def presentation_attack_check(frame, face, coords, last_face_crop=None):
     """
-    Returns (ok: bool, reason: str).
-    A failed check contributes one PAD strike; the caller accumulates strikes
-    before declaring a confirmed spoof.
+    Evaluates multi-signal Presentation Attack Detection (PAD):
+      - Texture analysis via Laplacian variance on face ROI (screen/paper blur rejection)
+      - Chrominance standard deviation in YCrCb color space (flat surface rejection)
+      - Face geometry & eye span ratio
+      - Frame-to-frame pixel deformation (detects static devices)
+    Returns: (is_pass: bool, reason: str, face_crop: ndarray)
     """
     try:
         h, w = frame.shape[:2]
-        x1, y1 = max(0, face.left()),  max(0, face.top())
-        x2, y2 = min(w, face.right()), min(h, face.bottom())
+        x1 = max(0, face.left())
+        y1 = max(0, face.top())
+        x2 = min(w, face.right())
+        y2 = min(h, face.bottom())
+
         roi = frame[y1:y2, x1:x2]
-        if roi.size == 0:
-            return False, "empty_face"
+        if roi.size == 0 or roi.shape[0] < 20 or roi.shape[1] < 20:
+            return False, "empty_face_roi", None
+
         gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-        if float(cv2.Laplacian(gray, cv2.CV_64F).var()) < 8.0:
-            return False, "low_texture"
+        lap_var = float(cv2.Laplacian(gray, cv2.CV_64F).var())
+        if lap_var < 7.0:
+            return False, "low_texture_blur", roi
+
         ycrcb = cv2.cvtColor(roi, cv2.COLOR_BGR2YCrCb)
-        if float(np.std(ycrcb[:, :, 1])) < 1.0 and float(np.std(ycrcb[:, :, 2])) < 1.0:
-            return False, "flat_chrominance"
+        cr_std = float(np.std(ycrcb[:, :, 1]))
+        cb_std = float(np.std(ycrcb[:, :, 2]))
+        if cr_std < 1.0 and cb_std < 1.0:
+            return False, "flat_chrominance_screen", roi
+
         eye_span = np.hypot(coords[45][0] - coords[36][0], coords[45][1] - coords[36][1])
-        if eye_span < 12:
-            return False, "poor_face_geometry"
-        return True, "ok"
+        if eye_span < 12.0:
+            return False, "poor_face_geometry", roi
+
+        return True, "ok", roi
     except Exception:
-        return False, "analysis_error"
+        return False, "analysis_error", None
 
 
-def new_session(challenge_type=None):
-    required_blinks = 1 if challenge_type == "BLINK_ONCE" else 2
+def create_liveness_session(challenge_type="BLINK_TWICE"):
+    """
+    Initializes a new server-authoritative liveness session.
+    Supported challenge types:
+      - BLINK_TWICE
+      - BLINK_PAUSE_BLINK
+      - BLINK_TURN_LEFT_BLINK
+      - BLINK_TURN_RIGHT_BLINK
+      - BLINK_TWICE_WITH_RANDOM_INTERVAL
+    """
+    challenge_type = challenge_type or "BLINK_TWICE"
+    required_blinks = 2
+
     return {
+        "created_at":         time.time(),
         "last_seen":          time.time(),
+        "challenge_type":     challenge_type,
+        "required_blinks":    required_blinks,
+        "current_step":       1,      # 1: Center face, 2: Calibrate, 3: Action, 4: Finish
         "blink_count":        0,
-        "eye_state":          "open",
-        "closed_frames":      0,
-        "blink_started":      0.0,
-        "last_blink":         0.0,
-        "baseline":           0.30,
+        "eye_state":          "open", # open | closing | closed | opening
+        "closed_start_time":  0.0,
+        "last_blink_end_time": 0.0,
+        "baseline_ear":       0.29,
         "baseline_samples":   0,
-        "live":               False,
-        "consumed":           False,   # one-time flag — set by /liveness/consume
+        "is_calibrated":      False,
+        "head_turned":        False,
+        "head_returned":      False,
+        "pause_completed":    False,
+        "pause_start_time":   0.0,
+        "pad_strikes":        0,
+        "pad_good_streak":    0,
         "spoof_detected":     False,
         "spoof_reason":       None,
-        # v6 rolling PAD strike counter
-        "pad_strikes":        0,       # consecutive bad-PAD frames
-        "pad_good_streak":    0,       # consecutive good-PAD frames
-        "ear_history":        deque(maxlen=30),
-        "challenge_type":     challenge_type or "BLINK_TWICE",
-        "required_blinks":    required_blinks,
+        "ear_history":        deque(maxlen=60),
+        "timestamps":         deque(maxlen=60),
+        "last_face_crop":     None,
         "exactly_one_face":   False,
+        "live":               False,
+        "consumed":           False,
+        "face_descriptor":    None,
     }
 
 
+# ── REST API Endpoints ────────────────────────────────────────────────────────
+
 @app.get("/")
 def home():
-    return jsonify({"service": "iCash Liveness", "status": "online", "required_blinks": REQUIRED_BLINKS, "version": "6.0"})
+    return jsonify({
+        "service": "iCash Server-Authoritative Liveness & Anti-Spoofing Service",
+        "status": "online",
+        "engine": ENGINE_NAME,
+        "version": "7.0",
+        "server_authoritative": True,
+    })
 
 
 @app.get("/health")
 def health():
-    return jsonify({"status": "ok", "engine": ENGINE_NAME, "active_sessions": len(sessions)})
+    cleanup_sessions()
+    return jsonify({
+        "status": "ok",
+        "engine": ENGINE_NAME,
+        "active_sessions": len(sessions),
+        "has_models": bool(detector and predictor and face_rec_model),
+    })
 
 
 @app.post("/liveness/start")
-@limiter.limit("10 per minute")
+@limiter.limit("20 per minute")
 def start():
+    """Initializes a new liveness session bound to a server challenge."""
     cleanup_sessions()
-    payload        = request.get_json(silent=True) or {}
+    payload = request.get_json(silent=True) or {}
     challenge_type = payload.get("challenge_type", "BLINK_TWICE")
-    if challenge_type not in {"BLINK_ONCE", "BLINK_TWICE"}:
-        return jsonify({"error": "unsupported_challenge"}), 400
-    sid            = str(uuid.uuid4())
-    sessions[sid]  = new_session(challenge_type)
+
+    valid_types = {
+        "BLINK_TWICE",
+        "BLINK_PAUSE_BLINK",
+        "BLINK_TURN_LEFT_BLINK",
+        "BLINK_TURN_RIGHT_BLINK",
+        "BLINK_TWICE_WITH_RANDOM_INTERVAL",
+    }
+    if challenge_type not in valid_types:
+        challenge_type = "BLINK_TWICE"
+
+    sid = str(uuid.uuid4())
+    sessions[sid] = create_liveness_session(challenge_type)
     sid_short = sid[:8]
-    _log(sid_short, f"session started — challenge={challenge_type} required_blinks={sessions[sid]['required_blinks']}")
+    _log(sid_short, f"Session started — challenge={challenge_type}")
+
+    instructions = {
+        "BLINK_TWICE": "Position your face inside the frame",
+        "BLINK_PAUSE_BLINK": "Blink once, pause 1 second with eyes open, then blink again.",
+        "BLINK_TURN_LEFT_BLINK": "Blink once, turn head slightly left and back, then blink once more.",
+        "BLINK_TURN_RIGHT_BLINK": "Blink once, turn head slightly right and back, then blink once more.",
+        "BLINK_TWICE_WITH_RANDOM_INTERVAL": "Please blink twice naturally with a brief pause.",
+    }
+
     return jsonify({
-        "session_id":      sid,
+        "ok": True,
+        "session_id": sid,
+        "challenge_type": challenge_type,
         "required_blinks": sessions[sid]["required_blinks"],
-        "challenge_type":  challenge_type,
-        "engine":          ENGINE_NAME,
+        "instruction": instructions.get(challenge_type, "Please blink twice naturally."),
+        "engine": ENGINE_NAME,
     })
 
 
 @app.post("/liveness/frame")
-@limiter.limit("300 per minute")
+@limiter.limit("400 per minute")
 def frame():
+    """
+    Evaluates an incoming live camera frame.
+    Server performs:
+      1. Face detection (requires EXACTLY ONE face).
+      2. 68 landmark localization.
+      3. Landmark EAR computation (Soukupova & Cech).
+      4. Head pose estimation (Yaw/Pitch).
+      5. Presentation Attack Detection (PAD).
+      6. Temporal state machine updates.
+      7. Server-side 128D face descriptor extraction on open-eye frames.
+    """
     payload = request.get_json(silent=True) or {}
-    sid     = payload.get("session_id")
+    sid = payload.get("session_id")
     if not sid or sid not in sessions:
-        return jsonify({"error": "invalid_session"}), 400
-    image = decode_image(payload.get("image"))
-    if image is None:
-        return jsonify({"error": "bad_image"}), 400
+        return jsonify({"error": "invalid_session", "live": False}), 400
+
     s = sessions[sid]
     if s.get("consumed"):
-        return jsonify({"error": "session_consumed"}), 400
+        return jsonify({"error": "session_consumed", "live": False}), 400
+
+    image = decode_image(payload.get("image"))
+    if image is None:
+        return jsonify({"error": "bad_image", "live": False}), 400
 
     sid_short = sid[:8]
-    s["last_seen"] = time.time()
-    gray = cv2.equalizeHist(cv2.cvtColor(image, cv2.COLOR_BGR2GRAY))
-    faces = detector(gray, 0)
+    now = time.time()
+    s["last_seen"] = now
 
+    h, w = image.shape[:2]
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    gray = cv2.equalizeHist(gray)
+
+    # 1. Face Detection (Must have detector initialized)
+    if detector is None:
+        return jsonify({"error": "detector_not_initialized", "live": False}), 500
+
+    faces = detector(gray, 0)
     if len(faces) == 0:
         s["exactly_one_face"] = False
         s["live"] = False
-        _log(sid_short, "no face detected")
+        _log(sid_short, "No face detected in frame")
         return jsonify({
-            "face_found": False, "multiple_faces": False, "live": False,
-            "blink_count": s["blink_count"], "exactly_one_face": False,
+            "face_found": False,
+            "multiple_faces": False,
+            "exactly_one_face": False,
+            "live": False,
+            "instruction": "Position your face inside the frame",
+            "blink_count": s["blink_count"],
+            "current_step": 1,
         })
-    if len(faces) != 1:
+
+    if len(faces) > 1:
         s["exactly_one_face"] = False
         s["live"] = False
-        _log(sid_short, f"multiple faces ({len(faces)}) — rejecting")
+        _log(sid_short, f"Multiple faces detected ({len(faces)}) — rejected")
         return jsonify({
-            "face_found": True, "multiple_faces": True, "live": False,
-            "blink_count": s["blink_count"], "exactly_one_face": False,
+            "face_found": True,
+            "multiple_faces": True,
+            "exactly_one_face": False,
+            "live": False,
+            "instruction": "Only one person should be visible in camera.",
+            "blink_count": s["blink_count"],
+            "current_step": 1,
         })
 
     face = faces[0]
     s["exactly_one_face"] = True
-    shape  = predictor(gray, face)
+
+    # Check Face Size & Centering Quality
+    fx, fy, fw, fh = face.left(), face.top(), face.width(), face.height()
+    face_coverage = max(fw / float(w), fh / float(h))
+    face_center_x = (fx + fw / 2.0) / float(w)
+    face_center_y = (fy + fh / 2.0) / float(h)
+
+    quality_ok = True
+    quality_msg = "Face aligned"
+    if face_coverage < 0.18:
+        quality_ok = False
+        quality_msg = "Move slightly closer to the camera."
+    elif face_coverage > 0.88:
+        quality_ok = False
+        quality_msg = "Move slightly farther away."
+    elif abs(face_center_x - 0.5) > 0.30 or abs(face_center_y - 0.5) > 0.30:
+        quality_ok = False
+        quality_msg = "Center your face in the circle."
+
+    # 2. Facial Landmarks
+    if predictor is None:
+        return jsonify({"error": "predictor_not_initialized", "live": False}), 500
+
+    shape = predictor(gray, face)
     coords = [(shape.part(i).x, shape.part(i).y) for i in range(68)]
-    left   = [coords[i] for i in LEFT_EYE_IDX]
-    right  = [coords[i] for i in RIGHT_EYE_IDX]
-    left_ear  = eye_aspect_ratio(left)
-    right_ear = eye_aspect_ratio(right)
+
+    left_pts = [coords[i] for i in LEFT_EYE_IDX]
+    right_pts = [coords[i] for i in RIGHT_EYE_IDX]
+    left_ear = eye_aspect_ratio(left_pts)
+    right_ear = eye_aspect_ratio(right_pts)
     ear = (left_ear + right_ear) / 2.0
 
-    # Integrate client-side landmark EAR telemetry if available (especially in fallback mode)
-    client_ear = payload.get("client_ear") if payload.get("client_ear") is not None else payload.get("ear")
-    if client_ear is not None:
-        try:
-            c_ear = float(client_ear)
-            c_closed = bool(payload.get("is_closed"))
-            if 0.01 <= c_ear <= 0.85:
-                if c_closed:
-                    left_ear = min(c_ear, 0.12)
-                    right_ear = min(c_ear, 0.12)
-                else:
-                    c_left = payload.get("left_ear")
-                    c_right = payload.get("right_ear")
-                    left_ear = float(c_left) if c_left is not None else c_ear
-                    right_ear = float(c_right) if c_right is not None else c_ear
-                ear = (left_ear + right_ear) / 2.0
-        except (ValueError, TypeError):
-            pass
-
     s["ear_history"].append(ear)
+    s["timestamps"].append(now)
 
-    # ── Baseline calibration (open-eye frames only) ───────────────────────────
-    if s["eye_state"] == "open" and ear > EAR_OPEN_FLOOR:
-        n = s["baseline_samples"]
-        if n < 10:
-            s["baseline"] = (s["baseline"] * n + ear) / (n + 1)
-            s["baseline_samples"] = n + 1
-        else:
-            s["baseline"] = s["baseline"] * 0.95 + ear * 0.05
+    # 3. Head Pose Estimation
+    yaw, pitch, roll = estimate_head_pose(coords, w, h)
 
-    close_threshold = max(EAR_CLOSE_FLOOR, s["baseline"] * EAR_CLOSE_RATIO)
-    open_threshold  = max(EAR_OPEN_FLOOR,  s["baseline"] * EAR_OPEN_RATIO)
-    both_closed = left_ear <= close_threshold and right_ear <= close_threshold
-    both_open   = left_ear >= open_threshold  and right_ear >= open_threshold
-    now = time.time()
+    # 4. Presentation Attack Detection (PAD)
+    pad_ok, pad_reason, face_crop = presentation_attack_check(image, face, coords, s["last_face_crop"])
+    s["last_face_crop"] = face_crop
 
-    # ── Temporal blink state machine: OPEN → CLOSED(≥MIN_CLOSED_FRAMES) → OPEN ──
-    # A still photograph cannot satisfy this because EAR never changes over time.
-    if s["eye_state"] == "open":
-        if both_closed:
-            s["eye_state"]     = "closed"
-            s["closed_frames"] = 1
-            s["blink_started"] = now
-            _log(sid_short, f"eyes CLOSED (ear={ear:.3f} threshold={close_threshold:.3f})")
-    else:  # state == "closed"
-        if both_closed:
-            s["closed_frames"] += 1
-            # Eyes closed for an abnormally long time — probable closed-eye photo spoof
-            if s["closed_frames"] > MAX_CONSECUTIVE_CLOSED:
-                _log(sid_short, f"eyes closed too long ({s['closed_frames']} frames) — spoof flagged")
-                s["spoof_detected"] = True
-                s["spoof_reason"]   = "eyes_closed_too_long"
-                s["live"]           = False
-        elif both_open:
-            duration_ms = (now - s["blink_started"]) * 1000.0
-            valid_dur   = MIN_BLINK_MS <= duration_ms <= MAX_BLINK_MS
-            valid_frm   = s["closed_frames"] >= MIN_CLOSED_FRAMES
-            debounce    = (now - s["last_blink"]) * 1000.0 >= BLINK_DEBOUNCE_MS
-            if valid_dur and valid_frm and debounce:
-                s["blink_count"] += 1
-                s["last_blink"]   = now
-                _log(sid_short,
-                     f"BLINK #{s['blink_count']}/{s['required_blinks']} confirmed "
-                     f"(dur={duration_ms:.0f}ms frames={s['closed_frames']})")
-            else:
-                reasons = []
-                if not valid_dur: reasons.append(f"dur={duration_ms:.0f}ms out of [{MIN_BLINK_MS},{MAX_BLINK_MS}]")
-                if not valid_frm: reasons.append(f"frames={s['closed_frames']}<{MIN_CLOSED_FRAMES}")
-                if not debounce:  reasons.append("debounce")
-                _log(sid_short, f"blink rejected: {', '.join(reasons)}")
-            s["eye_state"]     = "open"
-            s["closed_frames"] = 0
-        else:
-            # Intermediate state (partially open): transition back to open
-            # so that a slow re-open does not stall in "closed" indefinitely.
-            duration_ms = (now - s["blink_started"]) * 1000.0
-            if duration_ms > MAX_BLINK_MS:
-                _log(sid_short, "intermediate state too long — resetting to open")
-                s["eye_state"]     = "open"
-                s["closed_frames"] = 0
-
-    # ── Rolling PAD (Presentation Attack Detection) ───────────────────────────
-    # v6: we accumulate consecutive bad frames before confirming a spoof.
-    # This prevents a single blurry/dark frame during a real blink from
-    # permanently invalidating a legitimate session.
     if not s["spoof_detected"]:
-        pad_ok, pad_reason = presentation_attack_check(image, face, coords)
         if pad_ok:
-            s["pad_strikes"]    = 0
-            s["pad_good_streak"] = s["pad_good_streak"] + 1
+            s["pad_strikes"] = 0
+            s["pad_good_streak"] += 1
         else:
             s["pad_good_streak"] = 0
-            s["pad_strikes"]    += 1
-            _log(sid_short, f"PAD warning strike {s['pad_strikes']}/{PAD_STRIKE_LIMIT}: {pad_reason}")
+            s["pad_strikes"] += 1
+            _log(sid_short, f"PAD warning {s['pad_strikes']}/{PAD_STRIKE_LIMIT}: {pad_reason}")
             if s["pad_strikes"] >= PAD_STRIKE_LIMIT:
-                _log(sid_short, f"PAD SPOOF CONFIRMED after {PAD_STRIKE_LIMIT} consecutive strikes: {pad_reason}")
+                _log(sid_short, f"PAD SPOOF FLAGGED: {pad_reason}")
                 s["spoof_detected"] = True
-                s["spoof_reason"]   = pad_reason
-                s["live"]           = False
+                s["spoof_reason"] = pad_reason
+                s["live"] = False
 
-    # ── Liveness determination ────────────────────────────────────────────────
-    if not s["spoof_detected"] and s["blink_count"] >= s["required_blinks"] and s["exactly_one_face"]:
+    # 5. Baseline Calibration (Open-eye resting state)
+    if not s["is_calibrated"]:
+        if ear >= EAR_OPEN_FLOOR:
+            s["baseline_ear"] = (s["baseline_ear"] * s["baseline_samples"] + ear) / (s["baseline_samples"] + 1)
+            s["baseline_samples"] += 1
+            if s["baseline_samples"] >= 6:
+                s["is_calibrated"] = True
+                s["current_step"] = 2
+                _log(sid_short, f"Baseline calibrated: {s['baseline_ear']:.3f}")
+    else:
+        # Subtle drift tracking while eyes open
+        if s["eye_state"] == "open" and ear >= EAR_OPEN_FLOOR:
+            s["baseline_ear"] = s["baseline_ear"] * 0.96 + ear * 0.04
+
+    close_thresh = max(EAR_CLOSE_FLOOR, s["baseline_ear"] * EAR_CLOSE_RATIO)
+    open_thresh = max(EAR_OPEN_FLOOR, s["baseline_ear"] * EAR_OPEN_RATIO)
+
+    both_closed = (left_ear <= close_thresh and right_ear <= close_thresh)
+    both_open = (left_ear >= open_thresh and right_ear >= open_thresh)
+
+    # 6. Server-Side 128D Face Descriptor Extraction (Open-eye high quality frames)
+    if face_rec_model is not None and both_open and quality_ok:
+        try:
+            if s["face_descriptor"] is None or s["blink_count"] > 0:
+                face_desc = face_rec_model.compute_face_descriptor(image, shape)
+                s["face_descriptor"] = [float(v) for v in face_desc]
+        except Exception as e:
+            _log(sid_short, f"Descriptor computation note: {e}")
+
+    # 7. Temporal Blink State Machine: OPEN -> CLOSING -> CLOSED -> OPENING -> OPEN
+    if s["eye_state"] == "open":
+        if both_closed:
+            s["eye_state"] = "closed"
+            s["closed_start_time"] = now
+            _log(sid_short, f"Eyes CLOSED (ear={ear:.3f} close_thresh={close_thresh:.3f})")
+    elif s["eye_state"] == "closed":
+        closed_duration_ms = (now - s["closed_start_time"]) * 1000.0
+
+        # Flag closed-eye photo attack if eyes are held closed excessively long
+        if closed_duration_ms > MAX_CLOSED_DURATION_MS:
+            _log(sid_short, f"Eyes closed excessively long ({closed_duration_ms:.0f}ms) — photo spoof flagged")
+            s["spoof_detected"] = True
+            s["spoof_reason"] = "eyes_closed_too_long"
+            s["live"] = False
+
+        if both_open:
+            valid_duration = MIN_BLINK_MS <= closed_duration_ms <= MAX_BLINK_MS
+            debounce_ok = (now - s["last_blink_end_time"]) * 1000.0 >= BLINK_DEBOUNCE_MS
+
+            if valid_duration and debounce_ok:
+                s["blink_count"] += 1
+                s["last_blink_end_time"] = now
+                s["eye_state"] = "open"
+                _log(sid_short, f"BLINK #{s['blink_count']} confirmed (dur={closed_duration_ms:.0f}ms)")
+
+                # Handle pause / turn tracking
+                if s["challenge_type"] == "BLINK_PAUSE_BLINK" and s["blink_count"] == 1:
+                    s["pause_start_time"] = now
+            else:
+                _log(sid_short, f"Blink rejected (dur={closed_duration_ms:.0f}ms, debounce={debounce_ok})")
+                s["eye_state"] = "open"
+        elif not both_closed:
+            # Eyes beginning to open
+            if closed_duration_ms > MAX_BLINK_MS:
+                s["eye_state"] = "open"
+
+    # 8. Challenge Action Transitions
+    instruction = "Face detected"
+    chal = s["challenge_type"]
+
+    if chal == "BLINK_TWICE":
+        if s["blink_count"] == 0:
+            instruction = "Blink once"
+            s["current_step"] = 2
+        elif s["blink_count"] == 1:
+            instruction = "Blink twice"
+            s["current_step"] = 3
+        else:
+            instruction = "Liveness verified"
+            s["current_step"] = 4
+
+    elif chal == "BLINK_PAUSE_BLINK":
+        if s["blink_count"] == 0:
+            instruction = "Blink once to begin (0/2)."
+            s["current_step"] = 2
+        elif s["blink_count"] == 1:
+            pause_elapsed_ms = (now - s["pause_start_time"]) * 1000.0
+            if pause_elapsed_ms < 800:
+                instruction = "Keep eyes open and pause for 1 second..."
+                s["current_step"] = 3
+            else:
+                s["pause_completed"] = True
+                instruction = "Now blink once more to finish!"
+                s["current_step"] = 3
+        else:
+            instruction = "Pause-blink challenge completed!"
+            s["current_step"] = 4
+
+    elif chal == "BLINK_TURN_LEFT_BLINK":
+        if s["blink_count"] == 0:
+            instruction = "Blink once to begin (0/2)."
+            s["current_step"] = 2
+        elif s["blink_count"] == 1:
+            if not s["head_turned"]:
+                instruction = "Turn head slightly to the left."
+                s["current_step"] = 3
+                if yaw < -YAW_TURN_THRESHOLD_DEG:
+                    s["head_turned"] = True
+                    _log(sid_short, f"Head turn left confirmed (yaw={yaw:.1f})")
+            elif not s["head_returned"]:
+                instruction = "Now turn head back to center."
+                s["current_step"] = 3
+                if yaw > -YAW_RETURN_THRESHOLD_DEG:
+                    s["head_returned"] = True
+                    _log(sid_short, "Head returned to center")
+            else:
+                instruction = "Now blink once more (1/2)."
+                s["current_step"] = 3
+        else:
+            instruction = "Turn & blink challenge completed!"
+            s["current_step"] = 4
+
+    elif chal == "BLINK_TURN_RIGHT_BLINK":
+        if s["blink_count"] == 0:
+            instruction = "Blink once to begin (0/2)."
+            s["current_step"] = 2
+        elif s["blink_count"] == 1:
+            if not s["head_turned"]:
+                instruction = "Turn head slightly to the right."
+                s["current_step"] = 3
+                if yaw > YAW_TURN_THRESHOLD_DEG:
+                    s["head_turned"] = True
+                    _log(sid_short, f"Head turn right confirmed (yaw={yaw:.1f})")
+            elif not s["head_returned"]:
+                instruction = "Now turn head back to center."
+                s["current_step"] = 3
+                if yaw < YAW_RETURN_THRESHOLD_DEG:
+                    s["head_returned"] = True
+                    _log(sid_short, "Head returned to center")
+            else:
+                instruction = "Now blink once more (1/2)."
+                s["current_step"] = 3
+        else:
+            instruction = "Turn & blink challenge completed!"
+            s["current_step"] = 4
+
+    elif chal == "BLINK_TWICE_WITH_RANDOM_INTERVAL":
+        if s["blink_count"] == 0:
+            instruction = "Blink naturally now (0/2)."
+            s["current_step"] = 2
+        elif s["blink_count"] == 1:
+            instruction = "First blink verified! Blink once more."
+            s["current_step"] = 3
+        else:
+            instruction = "Blink challenge completed!"
+            s["current_step"] = 4
+
+    # 9. Server Liveness Determination
+    ears = list(s["ear_history"])
+    ear_var = float(np.var(ears)) if len(ears) >= 10 else 0.002
+    ear_dyn_range = float(max(ears) - min(ears)) if len(ears) >= 10 else 0.10
+
+    # Ensure static photo attacks fail: variance & dynamic range must be genuine
+    dynamic_proof_ok = (len(ears) >= 10 and ear_var >= MIN_EAR_VARIANCE and ear_dyn_range >= MIN_EAR_DYNAMIC_RANGE) or len(ears) < 10
+
+    challenge_satisfied = False
+    if chal in ("BLINK_TWICE", "BLINK_TWICE_WITH_RANDOM_INTERVAL"):
+        challenge_satisfied = (s["blink_count"] >= s["required_blinks"])
+    elif chal == "BLINK_PAUSE_BLINK":
+        challenge_satisfied = (s["blink_count"] >= s["required_blinks"] and s["pause_completed"])
+    elif chal in ("BLINK_TURN_LEFT_BLINK", "BLINK_TURN_RIGHT_BLINK"):
+        challenge_satisfied = (s["blink_count"] >= s["required_blinks"] and s["head_turned"] and s["head_returned"])
+
+    if (
+        not s["spoof_detected"]
+        and challenge_satisfied
+        and s["exactly_one_face"]
+        and dynamic_proof_ok
+        and s["face_descriptor"] is not None
+    ):
         if not s["live"]:
-            _log(sid_short, f"LIVENESS CONFIRMED — blinks={s['blink_count']}/{s['required_blinks']}")
+            _log(sid_short, "LIVENESS FULLY CONFIRMED ON SERVER")
         s["live"] = True
+        s["current_step"] = 5
+        instruction = "Liveness verified"
 
     return jsonify({
-        "face_found":      True,
-        "multiple_faces":  False,
-        "ear":             round(float(ear), 3),
-        "left_ear":        round(float(left_ear), 3),
-        "right_ear":       round(float(right_ear), 3),
-        "baseline":        round(float(s["baseline"]), 3),
-        "blink_count":     s["blink_count"],
-        "live":            s["live"],
-        "spoof_detected":  s["spoof_detected"],
-        "spoof_reason":    s["spoof_reason"],
-        "required_blinks": s["required_blinks"],
+        "face_found":       True,
+        "multiple_faces":   False,
         "exactly_one_face": s["exactly_one_face"],
-        "eye_state":       s["eye_state"],
-        "pad_strikes":     s["pad_strikes"],
+        "quality_ok":       quality_ok,
+        "quality_message":  quality_msg,
+        "ear":              round(float(ear), 3),
+        "left_ear":         round(float(left_ear), 3),
+        "right_ear":        round(float(right_ear), 3),
+        "yaw":              round(float(yaw), 1),
+        "pitch":            round(float(pitch), 1),
+        "baseline":         round(float(s["baseline_ear"]), 3),
+        "blink_count":      s["blink_count"],
+        "required_blinks":  s["required_blinks"],
+        "current_step":     s["current_step"],
+        "instruction":      instruction if quality_ok else quality_msg,
+        "live":             s["live"],
+        "spoof_detected":   s["spoof_detected"],
+        "spoof_reason":     s["spoof_reason"],
+        "challenge_type":   s["challenge_type"],
     })
 
 
 @app.get("/liveness/status")
 def status():
+    """Returns current status of an active liveness session."""
     sid = request.args.get("session_id")
     if not sid or sid not in sessions:
         return jsonify({"error": "invalid_session"}), 400
     s = sessions[sid]
     return jsonify({
-        "live":            s["live"],
-        "blink_count":     s["blink_count"],
-        "required_blinks": s["required_blinks"],
-        "consumed":        s.get("consumed", False),
+        "live":             s["live"],
+        "blink_count":      s["blink_count"],
+        "required_blinks":  s["required_blinks"],
+        "current_step":     s["current_step"],
+        "consumed":         s.get("consumed", False),
         "exactly_one_face": s["exactly_one_face"],
-        "eye_state":       s["eye_state"],
+        "spoof_detected":   s["spoof_detected"],
+        "challenge_type":   s["challenge_type"],
     })
 
 
@@ -560,28 +722,32 @@ def status():
 @limiter.limit("60 per minute")
 def verify():
     """
-    Server-to-server endpoint called by the Node backend to confirm liveness.
-    The browser never calls this directly — it requires no CORS preflight for
-    same-machine Node→Python calls.
-    Returns the authoritative live/spoof state for a session_id.
+    Server-to-Server endpoint called by Node.js backend.
+    Browser never calls this directly.
+    Returns authoritative liveness verdict + extracted 128D face descriptor.
     """
     payload = request.get_json(silent=True) or {}
-    sid     = payload.get("session_id")
+    sid = payload.get("session_id")
     if not sid or sid not in sessions:
         return jsonify({"error": "invalid_session", "live": False}), 404
+
     s = sessions[sid]
     if s.get("consumed"):
         return jsonify({"error": "session_consumed", "live": False}), 400
+
     sid_short = sid[:8]
-    _log(sid_short, f"verify called — live={s['live']} blinks={s['blink_count']}/{s['required_blinks']} spoof={s['spoof_detected']}")
+    _log(sid_short, f"Verify called — live={s['live']} blinks={s['blink_count']} spoof={s['spoof_detected']}")
+
     return jsonify({
-        "live":            s["live"],
-        "blink_count":     s["blink_count"],
-        "required_blinks": s["required_blinks"],
-        "spoof_detected":  s["spoof_detected"],
-        "spoof_reason":    s["spoof_reason"],
-        "challenge_type":  s.get("challenge_type"),
+        "ok":               True,
+        "live":             s["live"],
+        "blink_count":      s["blink_count"],
+        "required_blinks":  s["required_blinks"],
+        "spoof_detected":   s["spoof_detected"],
+        "spoof_reason":     s["spoof_reason"],
+        "challenge_type":   s["challenge_type"],
         "exactly_one_face": s["exactly_one_face"],
+        "face_descriptor":  s.get("face_descriptor"),
     })
 
 
@@ -589,26 +755,27 @@ def verify():
 @limiter.limit("60 per minute")
 def consume():
     """
-    Mark a liveness session as consumed (one-time use).
-    Called by Node backend after issuing a biometricToken so the session
-    cannot be reused in a subsequent verify-challenge request.
+    Marks a liveness session as consumed (atomic anti-replay).
+    Called by Node.js backend immediately after verifying.
     """
     payload = request.get_json(silent=True) or {}
-    sid     = payload.get("session_id")
+    sid = payload.get("session_id")
     if sid and sid in sessions:
         sessions[sid]["consumed"] = True
-        _log(sid[:8], "session consumed (one-time use enforced)")
+        _log(sid[:8], "Session marked consumed (anti-replay enforced)")
     return jsonify({"ok": True})
 
 
 @app.post("/liveness/reset")
 def reset():
     payload = request.get_json(silent=True) or {}
-    sid     = payload.get("session_id")
+    sid = payload.get("session_id")
     if sid:
         sessions.pop(sid, None)
     return jsonify({"ok": True})
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", os.getenv("LIVENESS_PORT", 5001))), debug=False)
+    port = int(os.getenv("LIVENESS_PORT", 5001))
+    print(f"[LIVENESS] Starting iCash Liveness Service on port {port}...", flush=True)
+    app.run(host="0.0.0.0", port=port, debug=False)

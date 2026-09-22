@@ -1,30 +1,28 @@
 /**
- * iCash Biometric Authentication Subsystem
+ * iCash Server-Authoritative Biometric Subsystem (v8.0)
  *
- * Built from scratch with strict temporal eye-blink liveness validation,
- * adaptive baseline calibration, and 128-dimensional facial vector matching.
- *
- * Zero tolerance for:
- *   - Static photos / printed photos
- *   - Screen video replays
- *   - Staring without blinking
- *   - Single-blink attempts
- *   - Face identity mismatch (Euclidean distance >= 0.52)
- *   - Client-side trust bypasses
+ * Implements:
+ *   - Zero Client-Trust: Client is camera-only; server evaluates all liveness and PAD proofs.
+ *   - Continuous Canvas Evidence Streaming: 640x480 @ 6-8 fps with quality control.
+ *   - 5-Stage Verification UX: Center Face → Live Check → Blink Challenge → Match → Authorized.
+ *   - Multi-Modal Audio & Screen-Reader Feedback (Web Speech API + ARIA live).
+ *   - Biometric-only login with accessible voice guidance.
+ *   - Retry limits with cooldown, lighting detection, graceful service degradation.
  */
 
 // Model URLs: Express local static assets first, fallback to Vlad Mandic CDN
 const FACEAPI_MODEL_URL = '/models';
 const FACEAPI_MODEL_URL_CDN = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/';
 
-// Core thresholds
-const MATCH_THRESHOLD = 0.52;     // Euclidean distance < 0.52 = match
-const REQUIRED_BLINKS = 2;        // 2 distinct full blinks required
-const ENROLL_SAMPLES = 5;         // Diverse frames required for enrollment
-const CALIBRATION_FRAMES = 15;    // Resting baseline frames
-const MIN_BLINK_DURATION_MS = 70; // Shortest valid blink closure
-const MAX_BLINK_DURATION_MS = 700;// Longest valid blink closure (rejects sleep / closed-eye photos)
-const BLINK_DEBOUNCE_MS = 250;    // Minimum gap between blinks
+// Core Thresholds
+const MATCH_THRESHOLD = 0.52;
+const ENROLL_SAMPLES = 5;
+
+// ── Retry Limiting ───────────────────────────────────────────────────────────
+const LOGIN_MAX_ATTEMPTS = 5;
+const LOGIN_COOLDOWN_MS  = 30 * 1000; // 30 seconds
+let _loginAttempts = 0;
+let _loginCooldownUntil = 0;
 
 // ── Math & Geometry Helpers ──────────────────────────────────────────────────
 function euclidean(a, b) {
@@ -50,35 +48,6 @@ function calculateSampleDiversity(samples) {
   return pairs > 0 ? totalDist / pairs : 1.0;
 }
 
-function getPoint(p) {
-  if (!p) return null;
-  const x = typeof p.x === 'number' ? p.x : (typeof p._x === 'number' ? p._x : (Array.isArray(p) ? p[0] : null));
-  const y = typeof p.y === 'number' ? p.y : (typeof p._y === 'number' ? p._y : (Array.isArray(p) ? p[1] : null));
-  if (x === null || y === null || isNaN(x) || isNaN(y)) return null;
-  return { x, y };
-}
-
-function dist(p1, p2) {
-  const pt1 = getPoint(p1);
-  const pt2 = getPoint(p2);
-  if (!pt1 || !pt2) return 0;
-  return Math.hypot(pt1.x - pt2.x, pt1.y - pt2.y);
-}
-
-/**
- * Soukupová & Čech Eye Aspect Ratio formula:
- * Points: [p0, p1, p2, p3, p4, p5]
- * EAR = (||p1 - p5|| + ||p2 - p4||) / (2 * ||p0 - p3||)
- */
-function calculateEAR(pts) {
-  if (!pts || pts.length < 6) return 0.28;
-  const v1 = dist(pts[1], pts[5]);
-  const v2 = dist(pts[2], pts[4]);
-  const h  = dist(pts[0], pts[3]);
-  if (h <= 0.001) return 0.28;
-  return (v1 + v2) / (2.0 * h);
-}
-
 // ── Camera Manager ────────────────────────────────────────────────────────────
 const CameraManager = {
   activeStreams: new WeakMap(),
@@ -90,13 +59,11 @@ const CameraManager = {
     }
     if (!videoEl) throw new Error('NO_VIDEO_ELEMENT');
 
-    // Set mobile-friendly video attributes
     videoEl.setAttribute('playsinline', 'true');
     videoEl.setAttribute('webkit-playsinline', 'true');
     videoEl.setAttribute('muted', 'true');
     videoEl.muted = true;
 
-    // Stop existing stream if any
     this.stop(videoEl);
 
     if (!window.isSecureContext) {
@@ -130,8 +97,7 @@ const CameraManager = {
     let stream;
     try {
       stream = await navigator.mediaDevices.getUserMedia(constraints);
-    } catch (e) {
-      // Fallback for strict devices
+    } catch (_) {
       stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
     }
 
@@ -194,15 +160,14 @@ async function ensureBioModels() {
       ]);
       window._bioModelsLoaded = true;
       window._bioModelsLoading = false;
-      console.log('[iCash Biometric] Face models loaded successfully from:', src);
+      console.log('[iCash Biometric] Client face models loaded from:', src);
       return true;
     } catch (e) {
-      console.warn('[iCash Biometric] Failed loading models from', src, '— trying next source:', e.message || e);
+      console.warn('[iCash Biometric] Model load fallback notice:', e.message || e);
     }
   }
 
   window._bioModelsLoading = false;
-  console.error('[iCash Biometric] All model sources failed.');
   return false;
 }
 
@@ -210,281 +175,62 @@ function getDetectOptions() {
   return new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.30 });
 }
 
-// ── Face Quality Gate ─────────────────────────────────────────────────────────
+// ── Client Frame Quality Gate (UI Coaching) ───────────────────────────────────
 const FaceQualityGate = {
   validate(detections, videoEl) {
     if (!detections || detections.length === 0) {
-      return { ok: false, reason: 'NO_FACE', message: 'Center your face in the camera circle' };
+      return { ok: false, reason: 'NO_FACE', message: 'Position your face inside the frame' };
     }
     if (detections.length > 1) {
       return { ok: false, reason: 'MULTI_FACE', message: 'Multiple faces detected — only one person allowed' };
     }
 
     const det = detections[0];
-    const score = det.detection.score || 0;
-    if (score < 0.32) {
-      return { ok: false, reason: 'LOW_SCORE', message: 'Low confidence — look straight at the camera' };
-    }
-
     const box = det.detection.box;
     const vw = videoEl.videoWidth || 640;
     const vh = videoEl.videoHeight || 480;
 
-    // Coverage check: face should cover 20% to 85% of frame dimension
     const faceCoverage = Math.max(box.width / vw, box.height / vh);
-    if (faceCoverage < 0.20) {
+    if (faceCoverage < 0.18) {
       return { ok: false, reason: 'TOO_FAR', message: 'Move closer to the camera' };
     }
     if (faceCoverage > 0.88) {
       return { ok: false, reason: 'TOO_CLOSE', message: 'Move slightly back from the camera' };
     }
 
-    // Centeredness: face center must be within 25% of frame center
+    // Partial visibility check
+    if (box.x < 0 || box.y < 0 || box.x + box.width > vw || box.y + box.height > vh) {
+      return { ok: false, reason: 'PARTIAL', message: 'Keep your full face in the frame' };
+    }
+
     const faceCenterX = (box.x + box.width / 2) / vw;
     const faceCenterY = (box.y + box.height / 2) / vh;
-    const offsetX = Math.abs(faceCenterX - 0.5);
-    const offsetY = Math.abs(faceCenterY - 0.5);
-
-    if (offsetX > 0.25 || offsetY > 0.25) {
-      return { ok: false, reason: 'NOT_CENTERED', message: 'Center your face in the circle' };
+    if (Math.abs(faceCenterX - 0.5) > 0.30 || Math.abs(faceCenterY - 0.5) > 0.30) {
+      return { ok: false, reason: 'NOT_CENTERED', message: 'Center your face in the frame' };
     }
 
     return { ok: true, det };
   },
-};
 
-// ── EAR Calculator ────────────────────────────────────────────────────────────
-const EarCalculator = {
-  calculate(landmarks) {
-    if (!landmarks) return null;
-    let leftPts = null;
-    let rightPts = null;
-
-    if (typeof landmarks.getLeftEye === 'function') {
-      leftPts = landmarks.getLeftEye();
-      rightPts = landmarks.getRightEye();
-    } else if (landmarks.positions && landmarks.positions.length >= 68) {
-      leftPts = landmarks.positions.slice(36, 42);
-      rightPts = landmarks.positions.slice(42, 48);
-    }
-
-    if (!leftPts || !rightPts) return null;
-
-    const leftEAR = calculateEAR(leftPts);
-    const rightEAR = calculateEAR(rightPts);
-    const avgEAR = (leftEAR + rightEAR) / 2;
-
-    return { leftEAR, rightEAR, avgEAR };
+  /**
+   * Estimate brightness from a video frame via offscreen canvas.
+   * Returns value 0-255. < 40 = too dark, > 220 = overexposed.
+   */
+  sampleBrightness(videoEl, canvas) {
+    try {
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(videoEl, 0, 0, 80, 60);
+      const data = ctx.getImageData(0, 0, 80, 60).data;
+      let total = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        total += 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+      }
+      return total / (80 * 60);
+    } catch (_) { return 128; }
   },
 };
 
-// ── Adaptive Baseline Calibration ─────────────────────────────────────────────
-class AdaptiveBaseline {
-  constructor(samplesRequired = CALIBRATION_FRAMES) {
-    this.samplesRequired = samplesRequired;
-    this.samples = [];
-    this.baselineOpenEar = 0.28;
-    this.closeThreshold = 0.20;
-    this.openThreshold = 0.25;
-    this.isCalibrated = false;
-  }
-
-  reset() {
-    this.samples = [];
-    this.baselineOpenEar = 0.28;
-    this.closeThreshold = 0.20;
-    this.openThreshold = 0.25;
-    this.isCalibrated = false;
-  }
-
-  addSample(avgEAR) {
-    if (this.isCalibrated) return true;
-    // Reject samples where user is clearly blinking during calibration
-    if (avgEAR >= 0.19) {
-      this.samples.push(avgEAR);
-    }
-    if (this.samples.length >= this.samplesRequired) {
-      const sorted = [...this.samples].sort((a, b) => a - b);
-      const mid = Math.floor(sorted.length / 2);
-      const median = sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
-      this.baselineOpenEar = Math.max(0.24, Math.min(0.42, median));
-      this.closeThreshold = Math.min(0.21, Number((this.baselineOpenEar * 0.74).toFixed(3)));
-      this.openThreshold = Math.max(0.24, Number((this.baselineOpenEar * 0.88).toFixed(3)));
-      this.isCalibrated = true;
-      console.log(`[iCash Bio] Calibration complete: baseline=${this.baselineOpenEar.toFixed(3)}, closeThresh=${this.closeThreshold}, openThresh=${this.openThreshold}`);
-      return true;
-    }
-    return false;
-  }
-}
-
-// ── Temporal Blink State Machine ──────────────────────────────────────────────
-class BlinkStateMachine {
-  constructor(requiredBlinks = REQUIRED_BLINKS) {
-    this.requiredBlinks = requiredBlinks;
-    this.state = 'CALIBRATING'; // CALIBRATING | WAITING_FOR_BLINK | CLOSING | CLOSED | OPENING
-    this.blinkCount = 0;
-    this.closedStartTime = 0;
-    this.lastBlinkEndTime = 0;
-    this.isBothClosed = false;
-  }
-
-  reset(requiredBlinks = REQUIRED_BLINKS) {
-    this.requiredBlinks = requiredBlinks;
-    this.state = 'CALIBRATING';
-    this.blinkCount = 0;
-    this.closedStartTime = 0;
-    this.lastBlinkEndTime = 0;
-    this.isBothClosed = false;
-  }
-
-  update(earData, baseline, now = Date.now()) {
-    if (!baseline.isCalibrated) {
-      this.state = 'CALIBRATING';
-      return {
-        state: this.state,
-        blinkCount: this.blinkCount,
-        requiredBlinks: this.requiredBlinks,
-        isClosed: false,
-        blinkDetected: false,
-      };
-    }
-
-    const { leftEAR, rightEAR, avgEAR } = earData;
-    const bothClosed = leftEAR < baseline.closeThreshold && rightEAR < baseline.closeThreshold;
-    const bothOpen = leftEAR >= baseline.openThreshold && rightEAR >= baseline.openThreshold;
-    let blinkDetected = false;
-
-    switch (this.state) {
-      case 'CALIBRATING':
-      case 'WAITING_FOR_BLINK':
-        if (bothClosed) {
-          this.state = 'CLOSED';
-          this.closedStartTime = now;
-          this.isBothClosed = true;
-        } else if (avgEAR < baseline.openThreshold) {
-          this.state = 'CLOSING';
-        }
-        break;
-
-      case 'CLOSING':
-        if (bothClosed) {
-          this.state = 'CLOSED';
-          this.closedStartTime = now;
-          this.isBothClosed = true;
-        } else if (bothOpen) {
-          this.state = 'WAITING_FOR_BLINK';
-        }
-        break;
-
-      case 'CLOSED':
-        const closedDuration = now - this.closedStartTime;
-        if (bothOpen || avgEAR >= baseline.closeThreshold) {
-          // Eyes opening
-          if (closedDuration >= MIN_BLINK_DURATION_MS && closedDuration <= MAX_BLINK_DURATION_MS) {
-            // Check debounce
-            if (now - this.lastBlinkEndTime >= BLINK_DEBOUNCE_MS) {
-              this.blinkCount++;
-              this.lastBlinkEndTime = now;
-              blinkDetected = true;
-              console.log(`[iCash Bio] Valid blink #${this.blinkCount}/${this.requiredBlinks} (duration: ${closedDuration}ms)`);
-            }
-          }
-          this.state = bothOpen ? 'WAITING_FOR_BLINK' : 'OPENING';
-          this.isBothClosed = false;
-        } else if (closedDuration > MAX_BLINK_DURATION_MS) {
-          // Eyes closed too long (e.g. photo of closed eyes or prolonged squint)
-          this.state = 'WAITING_FOR_BLINK';
-          this.isBothClosed = false;
-        }
-        break;
-
-      case 'OPENING':
-        if (bothOpen) {
-          this.state = 'WAITING_FOR_BLINK';
-          this.isBothClosed = false;
-        } else if (bothClosed) {
-          this.state = 'CLOSED';
-          this.closedStartTime = now;
-          this.isBothClosed = true;
-        }
-        break;
-    }
-
-    return {
-      state: this.state,
-      blinkCount: this.blinkCount,
-      requiredBlinks: this.requiredBlinks,
-      isClosed: this.isBothClosed,
-      blinkDetected,
-    };
-  }
-}
-
-// ── Evidence Collector ────────────────────────────────────────────────────────
-class EvidenceCollector {
-  constructor(maxFrames = 120) {
-    this.maxFrames = maxFrames;
-    this.frames = [];
-    this.bestDescriptor = null;
-    this.descriptors = [];
-    this.lastDescriptorTime = 0;
-  }
-
-  reset() {
-    this.frames = [];
-    this.bestDescriptor = null;
-    this.descriptors = [];
-    this.lastDescriptorTime = 0;
-  }
-
-  addFrame(timestamp, earData, state, isFaceOk, descriptor = null) {
-    if (this.frames.length < this.maxFrames) {
-      this.frames.push({
-        timestamp,
-        leftEAR: Number(earData.leftEAR.toFixed(4)),
-        rightEAR: Number(earData.rightEAR.toFixed(4)),
-        avgEAR: Number(earData.avgEAR.toFixed(4)),
-        state,
-        faceDetected: isFaceOk,
-      });
-    }
-
-    // Capture descriptor on high quality open-eye frames
-    if (descriptor && isFaceOk && (state === 'WAITING_FOR_BLINK' || state === 'CALIBRATING')) {
-      if (!this.bestDescriptor) {
-        this.bestDescriptor = descriptor;
-      }
-      if (timestamp - this.lastDescriptorTime >= 200 && this.descriptors.length < ENROLL_SAMPLES) {
-        this.descriptors.push(descriptor);
-        this.lastDescriptorTime = timestamp;
-      }
-    }
-  }
-
-  getPackage(challengeId, nonce) {
-    return {
-      challengeId,
-      nonce,
-      liveDescriptor: this.bestDescriptor ? Array.from(this.bestDescriptor) : [],
-      challengeProof: this.frames,
-    };
-  }
-}
-
-// ── UI Overlay & Debug Helpers ────────────────────────────────────────────────
-const _bioDebugEnabled = (() => {
-  try {
-    if (typeof window !== 'undefined' && window.location) {
-      const host = window.location.hostname;
-      if (host === 'localhost' || host === '127.0.0.1' || host === '::1') return true;
-    }
-    return localStorage.getItem('icash_bio_debug') === 'true';
-  } catch {
-    return false;
-  }
-})();
-
+// ── UI Overlay & Step Checklist Helpers ───────────────────────────────────────
 function getOverlayCanvas(id, parentEl) {
   let oc = document.getElementById(id);
   if (!oc && parentEl) {
@@ -497,54 +243,71 @@ function getOverlayCanvas(id, parentEl) {
   return oc;
 }
 
-function getDebugPanel(id, parentEl) {
-  if (!_bioDebugEnabled || !parentEl) return null;
-  let panel = document.getElementById(id);
-  if (!panel) {
-    panel = document.createElement('div');
-    panel.id = id;
-    panel.style.cssText = [
-      'position:absolute;bottom:6px;left:6px;z-index:10;',
-      'background:rgba(10,15,30,0.85);color:#38bdf8;',
-      'font:10px/1.4 monospace;padding:6px 8px;border-radius:6px;',
-      'pointer-events:none;white-space:pre;min-width:200px;',
-      'border:1px solid rgba(56,189,248,0.3);',
-    ].join('');
-    parentEl.style.position = 'relative';
-    parentEl.appendChild(panel);
-  }
-  return panel;
-}
-
-function updateBlinkDots(prefix, blinkCount, reqBlinks = 2) {
-  const dot1 = document.getElementById(`${prefix}-dot-1`);
-  const dot2 = document.getElementById(`${prefix}-dot-2`);
-  if (dot1) {
-    if (blinkCount >= 1) dot1.classList.add('active');
-    else dot1.classList.remove('active');
-  }
-  if (dot2) {
-    if (blinkCount >= 2) dot2.classList.add('active');
-    else dot2.classList.remove('active');
+function updateChecklistStep(prefix, currentStep) {
+  // Step 1: Center face
+  // Step 2: Live check
+  // Step 3: Blink challenge
+  // Step 4: Identity match
+  // Step 5: Authorized
+  for (let s = 1; s <= 5; s++) {
+    const item = document.getElementById(`${prefix}-step-${s}`);
+    if (item) {
+      if (s < currentStep) {
+        item.className = 'bio-step completed';
+      } else if (s === currentStep) {
+        item.className = 'bio-step active';
+      } else {
+        item.className = 'bio-step pending';
+      }
+    }
   }
 }
 
-function setBannerStatus(prefix, text, stateClass = 'info') {
+/**
+ * Update the blink progress dots: 0=none, 1=first done, 2=both done.
+ * Handles both legacy .blink-dot elements and the new .blink-chip elements.
+ */
+function updateBlinkDots(prefix, blinkCount) {
+  // New .blink-chip style
+  const chip1 = document.getElementById(`${prefix}-dot-1`);
+  const chip2 = document.getElementById(`${prefix}-dot-2`);
+  if (chip1 && chip1.classList.contains('blink-chip')) {
+    chip1.classList.toggle('done',   blinkCount >= 1);
+    chip1.classList.toggle('active', blinkCount === 0);
+    chip1.setAttribute('aria-label', blinkCount >= 1 ? 'Blink 1 complete' : 'Blink 1 pending');
+    chip2.classList.toggle('done',   blinkCount >= 2);
+    chip2.classList.toggle('active', blinkCount === 1);
+    chip2.setAttribute('aria-label', blinkCount >= 2 ? 'Blink 2 complete' : 'Blink 2 pending');
+  } else {
+    // Legacy fallback
+    if (chip1) chip1.classList.toggle('active', blinkCount >= 1);
+    if (chip2) chip2.classList.toggle('active', blinkCount >= 2);
+  }
+}
+
+let _lastSpokenInstruction = '';
+
+function setBannerStatus(prefix, text, stateClass = 'info', speak = true) {
   const banner = document.getElementById(`${prefix}-instruction-banner`);
   const textEl = document.getElementById(`${prefix}-instruction-text`);
   if (textEl) textEl.textContent = text;
-  if (banner) {
-    banner.className = `scan-instruction-banner ${stateClass}`;
-  }
+  if (banner) banner.className = `scan-instruction-banner ${stateClass}`;
+
   const statusEl = document.getElementById(`${prefix}-scan-status`);
   if (statusEl) {
     statusEl.textContent = text;
     if (stateClass === 'bad') statusEl.classList.add('bad');
     else statusEl.classList.remove('bad');
   }
+
+  // Multi-modal speech announcement
+  if (speak && text && text !== _lastSpokenInstruction && window.iCashAccessibility) {
+    _lastSpokenInstruction = text;
+    window.iCashAccessibility.announce(text, stateClass === 'bad' ? 'assertive' : 'polite');
+  }
 }
 
-function drawFaceRing(canvas, video, quality, earData, blinkInfo) {
+function drawFaceRing(canvas, video, quality, isLive = false) {
   if (!canvas || !video) return;
   const w = video.videoWidth || 640;
   const h = video.videoHeight || 480;
@@ -553,17 +316,12 @@ function drawFaceRing(canvas, video, quality, earData, blinkInfo) {
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, w, h);
 
-  if (!quality.ok || !quality.det) {
-    return;
-  }
+  if (!quality || !quality.ok || !quality.det) return;
 
   const det = quality.det;
   const box = det.detection.box;
-  const isGood = blinkInfo && blinkInfo.blinkCount >= (blinkInfo.requiredBlinks || 2);
-  const isClosed = blinkInfo && blinkInfo.isClosed;
-  const color = isGood ? '#22c55e' : (isClosed ? '#38bdf8' : '#2dd4bf');
+  const color = isLive ? '#22c55e' : '#38bdf8';
 
-  // Bounding box
   ctx.save();
   ctx.strokeStyle = color;
   ctx.lineWidth = 2.5;
@@ -585,26 +343,6 @@ function drawFaceRing(canvas, video, quality, earData, blinkInfo) {
     ctx.lineTo(cx + dx * s, cy);
     ctx.stroke();
   });
-
-  // Eye landmarks
-  if (det.landmarks) {
-    try {
-      const left = det.landmarks.getLeftEye ? det.landmarks.getLeftEye() : null;
-      const right = det.landmarks.getRightEye ? det.landmarks.getRightEye() : null;
-      const eyeColor = isClosed ? '#22c55e' : '#38bdf8';
-      ctx.strokeStyle = eyeColor;
-      ctx.lineWidth = 1.5;
-      [left, right].forEach((pts) => {
-        if (!pts || pts.length < 6) return;
-        ctx.beginPath();
-        ctx.moveTo(pts[0].x, pts[0].y);
-        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
-        ctx.closePath();
-        ctx.stroke();
-      });
-    } catch (_) {}
-  }
-
   ctx.restore();
 }
 
@@ -612,76 +350,104 @@ function drawFaceRing(canvas, video, quality, earData, blinkInfo) {
 let _currentChallenge = null;
 
 // ==============================================================================
-// 1. LOGIN BIOMETRIC SCAN
+// 1. LOGIN BIOMETRIC SCAN (SERVER-AUTHORITATIVE)
 // ==============================================================================
 let _loginActive = false;
+let _brightCanvas = null; // tiny offscreen canvas for brightness sampling
 
 async function beginLoginScan() {
   _loginActive = false;
-  const video = document.getElementById('login-video');
-  const errEl = document.getElementById('login-cam-error');
+  _lastSpokenInstruction = '';
+
+  // ── Cooldown guard ─────────────────────────────────────────────────────────
+  if (Date.now() < _loginCooldownUntil) {
+    const remainSec = Math.ceil((_loginCooldownUntil - Date.now()) / 1000);
+    setBannerStatus('login',
+      `Too many failed attempts. Please wait ${remainSec}s before retrying.`, 'bad', true);
+    return;
+  }
+
+  const video  = document.getElementById('login-video');
+  const errEl  = document.getElementById('login-cam-error');
   const retryBtn = document.getElementById('login-retry-cam-btn');
-  const captureBtn = document.getElementById('login-capture-btn');
 
-  if (captureBtn) captureBtn.style.display = 'none';
+  // Hide retry button at start
   if (retryBtn) retryBtn.style.display = 'none';
+  // Clear error box
+  if (errEl) { errEl.textContent = ''; errEl.classList.remove('active'); }
 
-  updateBlinkDots('login', 0, 2);
-  setBannerStatus('login', 'Initializing secure biometric camera…', 'info');
+  updateChecklistStep('login', 1);
+  updateBlinkDots('login', 0);
+  setBannerStatus('login', 'Initializing secure camera…', 'info', false);
+
+  // Brightness probe canvas (80×60 is enough for mean luminance)
+  if (!_brightCanvas) {
+    _brightCanvas = document.createElement('canvas');
+    _brightCanvas.width = 80;
+    _brightCanvas.height = 60;
+  }
 
   const parent = video ? video.parentElement : null;
   const overlayCanvas = getOverlayCanvas('login-overlay-canvas', parent);
-  const debugPanel = getDebugPanel('login-debug-panel', parent);
 
-  // 1. Ensure models loaded
-  const modelsOk = await ensureBioModels();
-  if (!modelsOk) {
-    setBannerStatus('login', 'Biometric models unavailable. Use PIN authorization.', 'bad');
-    if (captureBtn) {
-      captureBtn.style.display = '';
-      captureBtn.disabled = false;
-      captureBtn.textContent = 'Sign In with PIN';
-      captureBtn.onclick = () => goTo('screen-pin-login');
-    }
-    return;
-  }
+  // 1. Pre-load face-api models in background (for overlay only — server does the real work)
+  ensureBioModels().catch(() => {});
 
   // 2. Start Camera
   try {
     await CameraManager.start(video, errEl);
   } catch (camErr) {
-    setBannerStatus('login', 'Camera permission needed. Use PIN authorization.', 'bad');
+    const msg = 'Camera unavailable or permission was denied. ' +
+      'Grant camera permission and tap Retry, or use Assisted Mode.';
+    setBannerStatus('login', msg, 'bad', true);
+    if (errEl) { errEl.textContent = msg; errEl.classList.add('active'); }
     if (retryBtn) retryBtn.style.display = '';
     return;
   }
 
-  // 3. Request fresh server challenge
+  // 3. Request fresh cryptographic challenge from server
   const targetUser = window._loginTargetUser;
+  let challenge;
   try {
-    setBannerStatus('login', 'Requesting cryptographic challenge from server…', 'info');
+    setBannerStatus('login', 'Connecting to biometric server…', 'info', false);
     const challengeRes = await window.iCashApi.issueChallenge({
       userIdHint: targetUser ? targetUser.id : undefined,
     });
     if (!challengeRes || !challengeRes.ok || !challengeRes.challengeId) {
-      throw new Error(challengeRes.message || 'Challenge generation failed');
+      throw new Error((challengeRes && challengeRes.message) || 'Challenge generation failed');
     }
-    _currentChallenge = challengeRes;
+    challenge = challengeRes;
+    _currentChallenge = challenge;
+    setBannerStatus('login', challenge.instruction || 'Center your face in the frame', 'info', true);
   } catch (chalErr) {
-    setBannerStatus('login', 'Liveness server unavailable. Please sign in with PIN.', 'bad');
-    teardownLoginScan();
+    const offline = chalErr.message && (
+      chalErr.message.includes('NO_BACKEND') ||
+      chalErr.message.includes('unavailable') ||
+      chalErr.message.includes('fetch')
+    );
+    const msg = offline
+      ? 'Biometric server is offline. Tap Retry or use Assisted Mode.'
+      : `Unable to start verification: ${chalErr.message}`;
+    setBannerStatus('login', msg, 'bad', true);
+    if (errEl) { errEl.textContent = msg; errEl.classList.add('active'); }
+    if (retryBtn) retryBtn.style.display = '';
+    CameraManager.stop(video);
     return;
   }
 
-  // 4. Initialize engines
-  const baseline = new AdaptiveBaseline(CALIBRATION_FRAMES);
-  const stateMachine = new BlinkStateMachine(REQUIRED_BLINKS);
-  const evidence = new EvidenceCollector(120);
+  // 4. Offscreen canvas for frame capture (640×480 JPEG)
+  const offCanvas = document.createElement('canvas');
+  offCanvas.width  = 640;
+  offCanvas.height = 480;
+  const offCtx = offCanvas.getContext('2d');
 
   _loginActive = true;
-  setBannerStatus('login', 'Center your face and hold still to calibrate…', 'info');
+  updateChecklistStep('login', 1);
 
   let framesProcessed = 0;
-  const MAX_FRAMES = 500; // ~40 seconds timeout
+  let consecutiveNetworkErrors = 0;
+  const MAX_FRAMES = 350; // ~50 seconds at 7 fps
+  const MAX_NET_ERRORS = 8; // give up if network stays broken
 
   const runLoop = async () => {
     if (!_loginActive) return;
@@ -689,108 +455,145 @@ async function beginLoginScan() {
     framesProcessed++;
     if (framesProcessed > MAX_FRAMES) {
       _loginActive = false;
-      setBannerStatus('login', 'Authentication timed out. Please retry or use PIN.', 'bad');
-      if (retryBtn) retryBtn.style.display = '';
-      return;
-    }
-
-    let detections = [];
-    try {
-      detections = await faceapi
-        .detectAllFaces(video, getDetectOptions())
-        .withFaceLandmarks()
-        .withFaceDescriptors();
-    } catch (_) {}
-
-    if (!_loginActive) return;
-
-    const quality = FaceQualityGate.validate(detections, video);
-    if (!quality.ok) {
-      drawFaceRing(overlayCanvas, video, quality, null, null);
-      setBannerStatus('login', quality.message, 'warning');
-      setTimeout(runLoop, 90);
-      return;
-    }
-
-    const det = quality.det;
-    const earData = EarCalculator.calculate(det.landmarks);
-    if (!earData) {
-      setTimeout(runLoop, 80);
-      return;
-    }
-
-    const now = Date.now();
-
-    // Calibration phase
-    if (!baseline.isCalibrated) {
-      baseline.addSample(earData.avgEAR);
-      const progress = Math.round((baseline.samples.length / CALIBRATION_FRAMES) * 100);
-      setBannerStatus('login', `Calibrating eye baseline (${progress}%)… hold steady`, 'info');
-      evidence.addFrame(now, earData, 'CALIBRATING', true, det.descriptor);
-      drawFaceRing(overlayCanvas, video, quality, earData, { blinkCount: 0, requiredBlinks: 2, isClosed: false });
-      setTimeout(runLoop, 80);
-      return;
-    }
-
-    // Active liveness verification phase
-    const blinkResult = stateMachine.update(earData, baseline, now);
-    evidence.addFrame(now, earData, blinkResult.state, true, det.descriptor);
-    drawFaceRing(overlayCanvas, video, quality, earData, blinkResult);
-    updateBlinkDots('login', blinkResult.blinkCount, REQUIRED_BLINKS);
-
-    // Update debug telemetry if open
-    if (debugPanel) {
-      debugPanel.textContent = [
-        `Face Quality: OK`,
-        `Left EAR: ${earData.leftEAR.toFixed(3)} | Right: ${earData.rightEAR.toFixed(3)}`,
-        `Baseline: ${baseline.baselineOpenEar.toFixed(3)} (close < ${baseline.closeThreshold})`,
-        `Blink State: ${blinkResult.state}`,
-        `Blinks: ${blinkResult.blinkCount}/${REQUIRED_BLINKS}`,
-        `Frames Recorded: ${evidence.frames.length}`,
-      ].join('\n');
-    }
-
-    if (blinkResult.blinkCount === 0) {
-      setBannerStatus('login', '👁 Blink naturally now (0/2 blinks)…', 'info');
-    } else if (blinkResult.blinkCount === 1) {
-      setBannerStatus('login', '✔ 1st blink detected! Blink once more (1/2)…', 'info');
-    } else if (blinkResult.blinkCount >= REQUIRED_BLINKS) {
-      // 2 blinks reached! Transmit evidence to server
-      _loginActive = false;
-      setBannerStatus('login', '✅ 2/2 blinks confirmed! Validating temporal proof with server…', 'info');
-
-      try {
-        const payload = evidence.getPackage(_currentChallenge.challengeId, _currentChallenge.nonce);
-        if (targetUser && targetUser.id) {
-          payload.userId = targetUser.id;
-        }
-
-        const verifyRes = await window.iCashApi.verifyChallenge(payload);
-        if (!verifyRes || !verifyRes.ok || !verifyRes.biometricToken) {
-          throw new Error(verifyRes.message || 'Liveness and biometric verification failed');
-        }
-
-        setBannerStatus('login', '✅ Biometrics verified! Logging in…', 'ok');
-        CameraManager.stop(video);
-
-        // Complete login via biometricToken
-        const authRes = await window.iCashApi.loginBiometric(verifyRes.biometricToken);
-        if (authRes.ok && authRes.user) {
-          currentUser = authRes.user;
-          sessionStorage.setItem('icash_session_active', 'true');
-          enterDashboard();
-        } else {
-          throw new Error(authRes.message || 'Failed to establish session');
-        }
-      } catch (err) {
-        console.error('[iCash Bio] Verification error:', err);
-        setBannerStatus('login', `❌ ${err.message || 'Biometric authentication failed.'}`, 'bad');
-        if (retryBtn) retryBtn.style.display = '';
+      _loginAttempts++;
+      if (_loginAttempts >= LOGIN_MAX_ATTEMPTS) {
+        _loginCooldownUntil = Date.now() + LOGIN_COOLDOWN_MS;
+        _loginAttempts = 0;
       }
+      setBannerStatus('login',
+        'Authentication timed out — please blink naturally and retry.', 'bad', true);
+      if (retryBtn) retryBtn.style.display = '';
+      CameraManager.stop(video);
       return;
     }
 
-    setTimeout(runLoop, 80);
+    // Brightness check every 15 frames
+    if (framesProcessed % 15 === 0 && window._bioModelsLoaded) {
+      const brightness = FaceQualityGate.sampleBrightness(video, _brightCanvas);
+      if (brightness < 35) {
+        setBannerStatus('login', 'Improve lighting — it is too dark', 'warning', true);
+      } else if (brightness > 220) {
+        setBannerStatus('login', 'Reduce glare — too much light behind you', 'warning', true);
+      }
+    }
+
+    // Capture JPEG frame
+    offCtx.drawImage(video, 0, 0, 640, 480);
+    const frameB64 = offCanvas.toDataURL('image/jpeg', 0.82);
+
+    // Optional local face-api overlay (visual only, no auth logic)
+    if (window._bioModelsLoaded && typeof faceapi !== 'undefined') {
+      try {
+        const detections = await faceapi.detectAllFaces(video, getDetectOptions());
+        const quality = FaceQualityGate.validate(detections, video);
+        drawFaceRing(overlayCanvas, video, quality, false);
+        // Warn about quality issues the server hasn't seen yet
+        if (!quality.ok && quality.reason !== 'NO_FACE') {
+          setBannerStatus('login', quality.message, 'warning', false);
+        }
+      } catch (_) {}
+    }
+
+    // Stream frame to Server Liveness Engine
+    try {
+      const serverRes = await window.iCashApi.sendBiometricFrame({
+        challengeId: challenge.challengeId,
+        nonce: challenge.nonce,
+        image: frameB64,
+        timestamp: Date.now(),
+      });
+
+      consecutiveNetworkErrors = 0; // reset on success
+
+      if (!_loginActive) return;
+
+      if (serverRes && serverRes.ok) {
+        const step = serverRes.current_step || 1;
+        updateChecklistStep('login', step);
+
+        // Blink count from server
+        if (typeof serverRes.blink_count === 'number') {
+          updateBlinkDots('login', serverRes.blink_count);
+        }
+
+        if (serverRes.instruction) {
+          const stateClass = serverRes.quality_ok ? 'info' : 'warning';
+          setBannerStatus('login', serverRes.instruction, stateClass, true);
+        }
+
+        // ── LIVENESS CONFIRMED ────────────────────────────────────────────────
+        if (serverRes.live) {
+          _loginActive = false;
+          updateChecklistStep('login', 4);
+          updateBlinkDots('login', 2);
+          setBannerStatus('login', '✅ Liveness verified — matching identity…', 'ok', true);
+
+          try {
+            const verifyPayload = {
+              challengeId: challenge.challengeId,
+              nonce: challenge.nonce,
+            };
+            if (targetUser && targetUser.id) verifyPayload.userId = targetUser.id;
+
+            const verifyRes = await window.iCashApi.verifyChallenge(verifyPayload);
+            if (!verifyRes || !verifyRes.ok || !verifyRes.biometricToken) {
+              throw new Error((verifyRes && verifyRes.message) || 'Identity verification failed.');
+            }
+
+            updateChecklistStep('login', 5);
+            setBannerStatus('login', '✅ Identity verified — entering portal…', 'ok', true);
+            CameraManager.stop(video);
+            _loginAttempts = 0; // reset on success
+
+            const authRes = await window.iCashApi.loginBiometric(verifyRes.biometricToken);
+            if (authRes.ok && authRes.user) {
+              window.currentUser = authRes.user;
+              if (typeof currentUser !== 'undefined') currentUser = authRes.user;
+              sessionStorage.setItem('icash_session_active', 'true');
+              enterDashboard();
+            } else {
+              throw new Error((authRes && authRes.message) || 'Failed to establish session');
+            }
+          } catch (verifyErr) {
+            console.error('[iCash Bio] Verify error:', verifyErr);
+            _loginAttempts++;
+            setBannerStatus('login',
+              'We could not confidently verify you. Please try again.', 'bad', true);
+            if (retryBtn) retryBtn.style.display = '';
+          }
+          return;
+        }
+
+        // ── SPOOF DETECTED ────────────────────────────────────────────────────
+        if (serverRes.spoof_detected) {
+          _loginActive = false;
+          _loginAttempts++;
+          if (_loginAttempts >= LOGIN_MAX_ATTEMPTS) {
+            _loginCooldownUntil = Date.now() + LOGIN_COOLDOWN_MS;
+            _loginAttempts = 0;
+          }
+          setBannerStatus('login',
+            'Presentation attack detected. Please use your live face.', 'bad', true);
+          if (retryBtn) retryBtn.style.display = '';
+          CameraManager.stop(video);
+          return;
+        }
+      }
+    } catch (netErr) {
+      consecutiveNetworkErrors++;
+      console.warn('[iCash Bio] Frame network error:', netErr.message);
+      if (consecutiveNetworkErrors >= MAX_NET_ERRORS) {
+        _loginActive = false;
+        setBannerStatus('login',
+          'Network connection lost. Check your connection and tap Retry.', 'bad', true);
+        if (retryBtn) retryBtn.style.display = '';
+        CameraManager.stop(video);
+        return;
+      }
+    }
+
+    // Schedule next frame (~7 fps)
+    setTimeout(runLoop, 140);
   };
 
   runLoop();
@@ -808,189 +611,20 @@ function teardownLoginScan() {
   CameraManager.stop(video);
   const oc = document.getElementById('login-overlay-canvas');
   if (oc) oc.getContext('2d').clearRect(0, 0, oc.width, oc.height);
-  updateBlinkDots('login', 0, 2);
 }
 
 function captureLoginFace() {
-  // Manual button redirects to PIN login for security
-  goTo('screen-pin-login');
+  setBannerStatus('login', 'Automatic secure scan is active. Keep your face in frame and follow the blink prompt.', 'info', true);
 }
 
 // ==============================================================================
-// 2. REGISTRATION BIOMETRIC SCAN
-// ==============================================================================
-let _regActive = false;
-
-async function beginRegisterScan() {
-  _regActive = false;
-  const video = document.getElementById('reg-video');
-  const errEl = document.getElementById('reg-cam-error');
-  const retryBtn = document.getElementById('reg-retry-cam-btn');
-  const captureBtn = document.getElementById('reg-capture-btn');
-
-  if (captureBtn) captureBtn.style.display = 'none';
-  if (retryBtn) retryBtn.style.display = 'none';
-
-  updateBlinkDots('reg', 0, 2);
-  setBannerStatus('reg', 'Initializing camera for biometric enrollment…', 'info');
-
-  const parent = video ? video.parentElement : null;
-  const overlayCanvas = getOverlayCanvas('reg-overlay-canvas', parent);
-  const debugPanel = getDebugPanel('reg-debug-panel', parent);
-
-  const modelsOk = await ensureBioModels();
-  if (!modelsOk) {
-    setBannerStatus('reg', 'Face models unavailable. Please refresh or try again.', 'bad');
-    return;
-  }
-
-  try {
-    await CameraManager.start(video, errEl);
-  } catch (camErr) {
-    setBannerStatus('reg', 'Camera access denied or unavailable.', 'bad');
-    if (retryBtn) retryBtn.style.display = '';
-    return;
-  }
-
-  const baseline = new AdaptiveBaseline(CALIBRATION_FRAMES);
-  const stateMachine = new BlinkStateMachine(REQUIRED_BLINKS);
-  const evidence = new EvidenceCollector(120);
-
-  _regActive = true;
-  setBannerStatus('reg', 'Look at camera and hold steady for calibration…', 'info');
-
-  let framesProcessed = 0;
-  const MAX_FRAMES = 500;
-
-  const runLoop = async () => {
-    if (!_regActive) return;
-
-    framesProcessed++;
-    if (framesProcessed > MAX_FRAMES) {
-      _regActive = false;
-      setBannerStatus('reg', 'Enrollment timed out. Click Retry to scan again.', 'bad');
-      if (retryBtn) retryBtn.style.display = '';
-      return;
-    }
-
-    let detections = [];
-    try {
-      detections = await faceapi
-        .detectAllFaces(video, getDetectOptions())
-        .withFaceLandmarks()
-        .withFaceDescriptors();
-    } catch (_) {}
-
-    if (!_regActive) return;
-
-    const quality = FaceQualityGate.validate(detections, video);
-    if (!quality.ok) {
-      drawFaceRing(overlayCanvas, video, quality, null, null);
-      setBannerStatus('reg', quality.message, 'warning');
-      setTimeout(runLoop, 90);
-      return;
-    }
-
-    const det = quality.det;
-    const earData = EarCalculator.calculate(det.landmarks);
-    if (!earData) {
-      setTimeout(runLoop, 80);
-      return;
-    }
-
-    const now = Date.now();
-
-    if (!baseline.isCalibrated) {
-      baseline.addSample(earData.avgEAR);
-      const progress = Math.round((baseline.samples.length / CALIBRATION_FRAMES) * 100);
-      setBannerStatus('reg', `Calibrating resting baseline (${progress}%)…`, 'info');
-      evidence.addFrame(now, earData, 'CALIBRATING', true, det.descriptor);
-      drawFaceRing(overlayCanvas, video, quality, earData, { blinkCount: 0, requiredBlinks: 2, isClosed: false });
-      setTimeout(runLoop, 80);
-      return;
-    }
-
-    const blinkResult = stateMachine.update(earData, baseline, now);
-    evidence.addFrame(now, earData, blinkResult.state, true, det.descriptor);
-    drawFaceRing(overlayCanvas, video, quality, earData, blinkResult);
-    updateBlinkDots('reg', blinkResult.blinkCount, REQUIRED_BLINKS);
-
-    const collectedCount = evidence.descriptors.length;
-
-    if (blinkResult.blinkCount === 0) {
-      setBannerStatus('reg', `👁 Please blink twice to verify liveness (${collectedCount}/${ENROLL_SAMPLES} samples)…`, 'info');
-    } else if (blinkResult.blinkCount === 1) {
-      setBannerStatus('reg', `✔ 1st blink captured! Blink once more (1/2)…`, 'info');
-    } else if (blinkResult.blinkCount >= REQUIRED_BLINKS) {
-      if (collectedCount < ENROLL_SAMPLES) {
-        setBannerStatus('reg', `Collecting diverse face samples (${collectedCount}/${ENROLL_SAMPLES})…`, 'info');
-      } else {
-        // Anti-photo diversity check
-        const diversity = calculateSampleDiversity(evidence.descriptors);
-        if (diversity < 0.0025) {
-          setBannerStatus('reg', '⚠️ Static photo detected — live person required.', 'bad');
-          evidence.descriptors = [];
-          setTimeout(runLoop, 1500);
-          return;
-        }
-
-        _regActive = false;
-        setBannerStatus('reg', '✅ 2/2 blinks and face samples verified! Creating account…', 'ok');
-        CameraManager.stop(video);
-
-        try {
-          const payload = {
-            ...window._pendingRegPayload,
-            descriptors: evidence.descriptors.map((d) => Array.from(d)),
-          };
-          const regRes = await window.iCashApi.register(payload);
-          if (regRes.ok && regRes.user) {
-            currentUser = regRes.user;
-            sessionStorage.setItem('icash_session_active', 'true');
-            enterDashboard();
-          } else {
-            throw new Error(regRes.message || 'Registration failed');
-          }
-        } catch (err) {
-          setBannerStatus('reg', `❌ ${err.message || 'Registration failed.'}`, 'bad');
-          if (retryBtn) retryBtn.style.display = '';
-        }
-        return;
-      }
-    }
-
-    setTimeout(runLoop, 80);
-  };
-
-  runLoop();
-}
-
-function cancelRegisterScan() {
-  teardownRegisterScan();
-  goTo('screen-register-form');
-}
-
-function teardownRegisterScan() {
-  _regActive = false;
-  const video = document.getElementById('reg-video');
-  CameraManager.stop(video);
-  const oc = document.getElementById('reg-overlay-canvas');
-  if (oc) oc.getContext('2d').clearRect(0, 0, oc.width, oc.height);
-  updateBlinkDots('reg', 0, 2);
-}
-
-function captureRegisterFace() {
-  setBannerStatus('reg', 'Automatic scan active. Look at camera to enroll.', 'info');
-}
-
-// ==============================================================================
-// 3. TRANSACTION BIOMETRIC GATE
+// 2. TRANSACTION BIOMETRIC GATE (SERVER-AUTHORITATIVE)
 // ==============================================================================
 let _gateActive = false;
 
 async function launchBiometricGate(title, lead) {
   document.getElementById('verify-title').textContent = title || 'Authorize Transaction';
-  document.getElementById('verify-lead').textContent = lead || 'Blink twice to verify your identity';
+  document.getElementById('verify-lead').textContent = lead || 'Please complete server biometric verification';
   document.getElementById('verify-msg').textContent = '';
   document.getElementById('verify-pin-block').style.display = 'none';
 
@@ -1009,13 +643,6 @@ async function launchBiometricGate(title, lead) {
   const parent = video ? video.parentElement : null;
   const overlayCanvas = getOverlayCanvas('verify-overlay-canvas', parent);
 
-  const modelsOk = await ensureBioModels();
-  if (!modelsOk) {
-    if (statusEl) statusEl.textContent = 'Face models unavailable. Use PIN authorization.';
-    toggleVerifyPin();
-    return;
-  }
-
   try {
     await CameraManager.start(video, errEl);
   } catch (camErr) {
@@ -1024,28 +651,29 @@ async function launchBiometricGate(title, lead) {
     return;
   }
 
-  // Issue challenge
+  // Issue server challenge
   let challenge;
   try {
     challenge = await window.iCashApi.issueChallenge({
       userIdHint: currentUser ? currentUser.id : undefined,
     });
-    if (!challenge.ok) throw new Error('Challenge creation failed');
+    if (!challenge || !challenge.ok) throw new Error('Challenge creation failed');
   } catch (e) {
-    if (statusEl) statusEl.textContent = 'Liveness server unavailable. Use PIN.';
+    if (statusEl) statusEl.textContent = 'Biometric service unavailable. Use PIN.';
     toggleVerifyPin();
     return;
   }
 
-  const baseline = new AdaptiveBaseline(CALIBRATION_FRAMES);
-  const stateMachine = new BlinkStateMachine(REQUIRED_BLINKS);
-  const evidence = new EvidenceCollector(120);
+  const offCanvas = document.createElement('canvas');
+  offCanvas.width = 640;
+  offCanvas.height = 480;
+  const offCtx = offCanvas.getContext('2d');
 
   _gateActive = true;
-  if (statusEl) statusEl.textContent = 'Center your face and hold still to calibrate…';
+  if (statusEl) statusEl.textContent = challenge.instruction || 'Look at camera to authorize';
 
   let framesProcessed = 0;
-  const MAX_FRAMES = 400;
+  const MAX_FRAMES = 300;
 
   const runLoop = async () => {
     if (!_gateActive) return;
@@ -1058,81 +686,64 @@ async function launchBiometricGate(title, lead) {
       return;
     }
 
-    let detections = [];
+    offCtx.drawImage(video, 0, 0, 640, 480);
+    const frameB64 = offCanvas.toDataURL('image/jpeg', 0.82);
+
     try {
-      detections = await faceapi
-        .detectAllFaces(video, getDetectOptions())
-        .withFaceLandmarks()
-        .withFaceDescriptors();
+      const serverRes = await window.iCashApi.sendBiometricFrame({
+        challengeId: challenge.challengeId,
+        nonce: challenge.nonce,
+        image: frameB64,
+        timestamp: Date.now(),
+      });
+
+      if (!_gateActive) return;
+
+      if (serverRes && serverRes.ok) {
+        if (serverRes.instruction && statusEl) {
+          statusEl.textContent = serverRes.instruction;
+        }
+
+        if (serverRes.live) {
+          _gateActive = false;
+          if (statusEl) statusEl.textContent = '✅ Verified! Executing transaction…';
+
+          try {
+            const verifyRes = await window.iCashApi.verifyChallenge({
+              challengeId: challenge.challengeId,
+              nonce: challenge.nonce,
+              userId: currentUser ? currentUser.id : undefined,
+            });
+
+            if (!verifyRes || !verifyRes.ok || !verifyRes.biometricToken) {
+              throw new Error(verifyRes.message || 'Authorization denied.');
+            }
+
+            CameraManager.stop(video);
+            await executePendingAction();
+            teardownVerifyGate();
+            closeModal('verify');
+          } catch (err) {
+            const msgEl = document.getElementById('verify-msg');
+            if (msgEl) {
+              msgEl.textContent = err.message || 'Authorization failed.';
+              msgEl.className = 'modal-msg err';
+            }
+            if (statusEl) statusEl.textContent = '❌ Authorization failed.';
+          }
+          return;
+        }
+
+        if (serverRes.spoof_detected) {
+          _gateActive = false;
+          if (statusEl) statusEl.textContent = '❌ Presentation attack detected. Use PIN.';
+          toggleVerifyPin();
+          return;
+        }
+      }
     } catch (_) {}
 
-    if (!_gateActive) return;
-
-    const quality = FaceQualityGate.validate(detections, video);
-    if (!quality.ok) {
-      drawFaceRing(overlayCanvas, video, quality, null, null);
-      if (statusEl) statusEl.textContent = quality.message;
-      setTimeout(runLoop, 90);
-      return;
-    }
-
-    const det = quality.det;
-    const earData = EarCalculator.calculate(det.landmarks);
-    if (!earData) {
-      setTimeout(runLoop, 80);
-      return;
-    }
-
-    const now = Date.now();
-
-    if (!baseline.isCalibrated) {
-      baseline.addSample(earData.avgEAR);
-      const progress = Math.round((baseline.samples.length / CALIBRATION_FRAMES) * 100);
-      if (statusEl) statusEl.textContent = `Calibrating baseline (${progress}%)…`;
-      evidence.addFrame(now, earData, 'CALIBRATING', true, det.descriptor);
-      drawFaceRing(overlayCanvas, video, quality, earData, { blinkCount: 0, requiredBlinks: 2, isClosed: false });
-      setTimeout(runLoop, 80);
-      return;
-    }
-
-    const blinkResult = stateMachine.update(earData, baseline, now);
-    evidence.addFrame(now, earData, blinkResult.state, true, det.descriptor);
-    drawFaceRing(overlayCanvas, video, quality, earData, blinkResult);
-
-    if (blinkResult.blinkCount === 0) {
-      if (statusEl) statusEl.textContent = '👁 Face aligned — blink twice to authorize (0/2)…';
-    } else if (blinkResult.blinkCount === 1) {
-      if (statusEl) statusEl.textContent = '✔ 1st blink verified! Blink once more (1/2)…';
-    } else if (blinkResult.blinkCount >= REQUIRED_BLINKS) {
-      _gateActive = false;
-      if (statusEl) statusEl.textContent = '✅ Liveness verified! Validating with server…';
-
-      try {
-        const payload = evidence.getPackage(challenge.challengeId, challenge.nonce);
-        if (currentUser) payload.userId = currentUser.id;
-
-        const verifyRes = await window.iCashApi.verifyChallenge(payload);
-        if (!verifyRes || !verifyRes.ok || !verifyRes.biometricToken) {
-          throw new Error(verifyRes.message || 'Biometric authorization denied');
-        }
-
-        if (statusEl) statusEl.textContent = '✅ Authorized! Executing transaction…';
-        CameraManager.stop(video);
-        await executePendingAction();
-        teardownVerifyGate();
-        closeModal('verify');
-      } catch (err) {
-        const msgEl = document.getElementById('verify-msg');
-        if (msgEl) {
-          msgEl.textContent = err.message || 'Authorization failed.';
-          msgEl.className = 'modal-msg err';
-        }
-        if (statusEl) statusEl.textContent = '❌ Authorization failed.';
-      }
-      return;
-    }
-
-    setTimeout(runLoop, 80);
+    setTimeout(runLoop, 140);
   };
 
   runLoop();
@@ -1157,7 +768,148 @@ function captureVerifyFace() {
   toggleVerifyPin();
 }
 
-// Background preload of models on DOM ready
+// ==============================================================================
+// 3. REGISTRATION BIOMETRIC SCAN (ENROLLMENT)
+// ==============================================================================
+let _regActive = false;
+
+async function beginRegisterScan() {
+  _regActive = false;
+  const video = document.getElementById('reg-video');
+  const errEl = document.getElementById('reg-cam-error');
+  const retryBtn = document.getElementById('reg-retry-cam-btn');
+  const captureBtn = document.getElementById('reg-capture-btn');
+
+  if (captureBtn) captureBtn.style.display = 'none';
+  if (retryBtn) retryBtn.style.display = 'none';
+
+  setBannerStatus('reg', 'Initializing camera for biometric enrollment…', 'info');
+
+  const modelsOk = await ensureBioModels();
+  if (!modelsOk) {
+    setBannerStatus('reg', 'Biometric enrollment models unavailable. Please try again.', 'bad');
+    return;
+  }
+
+  try {
+    await CameraManager.start(video, errEl);
+  } catch (camErr) {
+    setBannerStatus('reg', 'Camera access denied or unavailable.', 'bad');
+    if (retryBtn) retryBtn.style.display = '';
+    return;
+  }
+
+  _regActive = true;
+  setBannerStatus('reg', 'Look at camera to capture enrolled face samples…', 'info');
+
+  const descriptors = [];
+  let framesProcessed = 0;
+  const MAX_FRAMES = 400;
+
+  const runLoop = async () => {
+    if (!_regActive) return;
+
+    framesProcessed++;
+    if (framesProcessed > MAX_FRAMES) {
+      _regActive = false;
+      setBannerStatus('reg', 'Enrollment timed out. Click Retry to scan again.', 'bad');
+      if (retryBtn) retryBtn.style.display = '';
+      return;
+    }
+
+    try {
+      const detections = await faceapi
+        .detectAllFaces(video, getDetectOptions())
+        .withFaceLandmarks()
+        .withFaceDescriptors();
+
+      const quality = FaceQualityGate.validate(detections, video);
+      if (!quality.ok) {
+        setBannerStatus('reg', quality.message, 'warning');
+      } else {
+        const det = quality.det;
+        if (det.descriptor && descriptors.length < ENROLL_SAMPLES) {
+          descriptors.push(Array.from(det.descriptor));
+          setBannerStatus('reg', `Capturing face sample ${descriptors.length}/${ENROLL_SAMPLES}…`, 'info');
+        }
+
+        if (descriptors.length >= ENROLL_SAMPLES) {
+          const diversity = calculateSampleDiversity(descriptors);
+          if (diversity < 0.002) {
+            setBannerStatus('reg', '⚠️ Static photo detected — live person required.', 'bad');
+            descriptors.length = 0;
+          } else {
+            _regActive = false;
+            setBannerStatus('reg', '✅ Biometrics captured! Creating account…', 'ok');
+            CameraManager.stop(video);
+
+            try {
+              const payload = {
+                ...window._pendingRegPayload,
+                faceDescriptors: descriptors,
+                descriptors,
+              };
+              const regRes = await window.iCashApi.register(payload);
+              if (regRes.ok && regRes.user) {
+                window.currentUser = regRes.user;
+                if (typeof currentUser !== 'undefined') currentUser = regRes.user;
+                sessionStorage.setItem('icash_session_active', 'true');
+                enterDashboard();
+              } else {
+                throw new Error(regRes.message || 'Registration failed');
+              }
+            } catch (err) {
+              setBannerStatus('reg', `❌ ${err.message || 'Registration failed.'}`, 'bad');
+              if (retryBtn) retryBtn.style.display = '';
+            }
+            return;
+          }
+        }
+      }
+    } catch (_) {}
+
+    setTimeout(runLoop, 120);
+  };
+
+  runLoop();
+}
+
+function cancelRegisterScan() {
+  teardownRegisterScan();
+  goTo('screen-register-form');
+}
+
+function teardownRegisterScan() {
+  _regActive = false;
+  const video = document.getElementById('reg-video');
+  CameraManager.stop(video);
+}
+
+function captureRegisterFace() {
+  setBannerStatus('reg', 'Automatic scan active. Look at camera to enroll.', 'info');
+}
+
+// ── Multi-Modal Authentication Selector (Phase 14) ───────────────────────────
+function selectAuthMode(mode) {
+  if (mode === 'voice') {
+    if (window.iCashAccessibility) {
+      window.iCashAccessibility.voiceGuidance = true;
+      window.iCashAccessibility.announce('Voice guided authentication selected. Opening camera.');
+    }
+    if (typeof openAssistedVoiceMode === 'function') openAssistedVoiceMode();
+  } else if (mode === 'assisted') {
+    goTo('screen-delegate-collect');
+    if (window.iCashAccessibility) {
+      window.iCashAccessibility.announce('Assisted banking mode selected.');
+    }
+  } else {
+    // Default face + blink
+    goTo('screen-login-scan');
+    beginLoginScan();
+  }
+}
+
+// Preload models in background
 document.addEventListener('DOMContentLoaded', () => {
-  setTimeout(() => ensureBioModels(), 600);
+  setTimeout(() => ensureBioModels(), 800);
 });
