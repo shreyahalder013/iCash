@@ -94,6 +94,13 @@ MODEL_DIR = os.path.dirname(os.path.abspath(__file__))
 PREDICTOR_PATH = os.path.join(MODEL_DIR, "shape_predictor_68_face_landmarks.dat")
 RECOGNITION_PATH = os.path.join(MODEL_DIR, "dlib_face_recognition_resnet_model_v1.dat")
 
+# 5-Stage State Machine Constants
+STAGE_CENTER_FACE = 1
+STAGE_LIVE_CHECK = 2
+STAGE_BLINK_CHALLENGE = 3
+STAGE_IDENTITY_MATCH = 4
+STAGE_AUTHORIZED = 5
+
 RIGHT_EYE_IDX = list(range(36, 42))
 LEFT_EYE_IDX  = list(range(42, 48))
 
@@ -213,6 +220,56 @@ def decode_image(data_url):
         return cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR)
     except Exception:
         return None
+
+
+def compute_liveness_confidence(ear, baseline_ear, blink_count, required_blinks,
+                                quality_ok, exactly_one_face, spoof_detected,
+                                ear_history):
+    """
+    Computes a 0-1 liveness confidence score from layered engine telemetry.
+    Combines blink progress, EAR dynamic range vs the calibrated resting
+    baseline, EAR variance, presentation quality and face presence.
+
+    Genuine two-blink sessions typically score >= 0.65; static photos,
+    screens and synthetic sequences score markedly lower.
+    """
+    try:
+        required = required_blinks or 2
+
+        # Signal 1: blink progress (0-0.40)
+        progress = min(blink_count / float(required), 1.0) * 0.40
+
+        # Signal 2: EAR dynamic range vs baseline (0-0.25)
+        baseline = baseline_ear if baseline_ear > 0 else 0.29
+        if len(ear_history) >= 2:
+            lowest = min(ear_history)
+            peak = max(ear_history)
+            dyn = max(0.0, peak - lowest)
+            range_score = min(dyn / (baseline * 0.5 or 0.15), 1.0) * 0.25
+        else:
+            range_score = 0.0
+
+        # Signal 3: EAR variance (0-0.15) — static presentations have ~0 variance
+        if len(ear_history) >= 10:
+            import statistics
+            var = statistics.pvariance(list(ear_history))
+            var_score = min(var / 0.004, 1.0) * 0.15
+        else:
+            var_score = 0.0
+
+        # Signal 4: presentation quality (0-0.15)
+        quality_score = 0.0 if quality_ok is False else 0.15
+
+        # Signal 5: single face present (0-0.05)
+        face_score = 0.05 if exactly_one_face else 0.0
+
+        # Spoof flags zero out the score entirely
+        if spoof_detected:
+            return 0.0
+
+        return round(min(progress + range_score + var_score + quality_score + face_score, 1.0), 2)
+    except Exception:
+        return 0.0
 
 
 def presentation_attack_check(frame, face, coords, last_face_crop=None):
@@ -663,6 +720,22 @@ def frame():
     elif chal in ("BLINK_TURN_LEFT_BLINK", "BLINK_TURN_RIGHT_BLINK"):
         challenge_satisfied = (s["blink_count"] >= s["required_blinks"] and s["head_turned"] and s["head_returned"])
 
+    # Map internal current_step to 5-stage state machine
+    # 1: CENTER_FACE (face detection + quality)
+    # 2: LIVE_CHECK (calibration + PAD baseline)
+    # 3: BLINK_CHALLENGE (active challenge)
+    # 4: IDENTITY_MATCH (challenge satisfied, ready for face match)
+    # 5: AUTHORIZED (fully live + face match done by Node.js)
+    stage = s["current_step"]
+    stage_labels = {
+        1: "Center Face",
+        2: "Live Check",
+        3: "Blink Challenge",
+        4: "Identity Match",
+        5: "Authorized",
+    }
+    stage_label = stage_labels.get(stage, "Unknown")
+
     if (
         not s["spoof_detected"]
         and challenge_satisfied
@@ -675,6 +748,8 @@ def frame():
         s["live"] = True
         s["current_step"] = 5
         instruction = "Liveness verified"
+        stage = 5
+        stage_label = "Authorized"
 
     return jsonify({
         "face_found":       True,
@@ -690,7 +765,13 @@ def frame():
         "baseline":         round(float(s["baseline_ear"]), 3),
         "blink_count":      s["blink_count"],
         "required_blinks":  s["required_blinks"],
+        "liveness_confidence": compute_liveness_confidence(
+            ear, s["baseline_ear"], s["blink_count"], s["required_blinks"],
+            quality_ok, s["exactly_one_face"], s["spoof_detected"], list(s["ear_history"])
+        ),
         "current_step":     s["current_step"],
+        "stage":            stage,
+        "stage_label":      stage_label,
         "instruction":      instruction if quality_ok else quality_msg,
         "live":             s["live"],
         "spoof_detected":   s["spoof_detected"],
@@ -738,16 +819,27 @@ def verify():
     sid_short = sid[:8]
     _log(sid_short, f"Verify called — live={s['live']} blinks={s['blink_count']} spoof={s['spoof_detected']}")
 
+    # Stage 4: Identity Match (liveness done, Node.js will do face matching)
+    stage = 4
+    stage_label = "Identity Match"
+
     return jsonify({
         "ok":               True,
         "live":             s["live"],
         "blink_count":      s["blink_count"],
         "required_blinks":  s["required_blinks"],
+        "liveness_confidence": compute_liveness_confidence(
+            (s["ear_history"][-1] if s["ear_history"] else 0.0), s["baseline_ear"],
+            s["blink_count"], s["required_blinks"], True,
+            s["exactly_one_face"], s["spoof_detected"], list(s["ear_history"])
+        ),
         "spoof_detected":   s["spoof_detected"],
         "spoof_reason":     s["spoof_reason"],
         "challenge_type":   s["challenge_type"],
         "exactly_one_face": s["exactly_one_face"],
         "face_descriptor":  s.get("face_descriptor"),
+        "stage":            stage,
+        "stage_label":      stage_label,
     })
 
 

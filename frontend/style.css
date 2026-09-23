@@ -2938,14 +2938,22 @@ body.senior-mode p.lead {
   right: 14px;
   z-index: 100;
 }
+/* Dashboard top-bar variant: flows inline in the .top-right cluster so the
+   menu never overlaps page content on any screen size */
+.assist-overflow-inline {
+  position: relative;
+  top: 0;
+  right: 0;
+  flex-shrink: 0;
+}
 .assist-menu-trigger {
   background: rgba(255,255,255,0.06);
   border: 1px solid var(--border-strong);
   color: var(--text-muted);
-  width: 32px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
   border-radius: 8px;
-  font-size: 18px;
+  font-size: 20px;
   line-height: 1;
   cursor: pointer;
   display: flex;
@@ -2986,6 +2994,7 @@ body.senior-mode p.lead {
   align-items: center;
   gap: 10px;
   width: 100%;
+  min-height: 46px;
   padding: 9px 12px;
   background: transparent;
   border: none;
@@ -3153,4 +3162,83 @@ body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after 
   .step-label { display: none; }
   .assist-overflow { top: 10px; right: 10px; }
   .blink-chip { width: 28px; height: 28px; }
+}
+
+/* ============================================================
+   CAMERA PERMISSION EXPLANATION NOTE
+   ============================================================ */
+.cam-permission-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--primary);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-muted);
+  text-align: left;
+  margin-bottom: 12px;
+}
+.cam-permission-note strong { color: var(--text-main); }
+
+/* ============================================================
+   ACCESSIBLE TRANSACTION CONFIRMATION SUMMARY
+   ============================================================ */
+.acc-confirm-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+}
+.acc-confirm-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.acc-confirm-key {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-family: var(--font-mono);
+}
+.acc-confirm-val {
+  font-size: 14px;
+  color: var(--text-main);
+  text-align: right;
+}
+
+/* ============================================================
+   REDUCED MOTION (manual toggle + prefers-reduced-motion)
+   Disables non-essential animation so face detection and motion
+   sensitivity are never interfered with.
+   ============================================================ */
+body.reduced-motion *,
+body.reduced-motion *::before,
+body.reduced-motion *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+body.reduced-motion #canvas3d { display: none; }
+body.reduced-motion .mic-fab { animation: none !important; }
+
+@media (prefers-reduced-motion: reduce) {
+  .assist-menu,
+  .mic-fab,
+  .voice-cmd-chip,
+  .blink-chip,
+  .bio-step,
+  .modal {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * iCash Enterprise Biometric Banking Client Engine
  * Integrates with Beautiful UI component primitives, FaceAPI, and real backend REST API.
  */
@@ -18,7 +18,6 @@ let isBalanceHidden = false;
 
 // Active verification session
 let pendingVerificationAction = null;
-let pendingLoginUser = null;
 let pendingOtp = null;
 let otpCountdownTimer = null;
 let otpResendTimer = null;
@@ -82,15 +81,80 @@ window.addEventListener('popstate', () => {
 });
 
 // ============================================================
+// SESSION SECURITY: FORCED LOGOUT ON EXPIRED SESSIONS + IDLE TIMEOUT
+// ============================================================
+
+/**
+ * Global 401 handler — fired by api.js when a protected banking endpoint
+ * returns 401 (auth/biometric/login endpoints are excluded there so failed
+ * PIN attempts during login do NOT trigger this).
+ * Prevents stale dashboard state when the server session has expired.
+ */
+window.addEventListener('icash:unauthorized', () => {
+  const wasAuthenticated = Boolean(currentUser);
+  currentUser = null;
+  sessionStorage.removeItem('icash_session_active');
+  sessionStorage.removeItem('icash_session_token');
+  if (wasAuthenticated) {
+    stopAllCameraLoops();
+    goTo('screen-welcome');
+    showAlertToast('🔒 Your session has expired. Please sign in again.', true);
+    if (window.iCashAccessibility) {
+      window.iCashAccessibility.announce('Your session has expired. Please sign in again.', 'assertive');
+    }
+  }
+});
+
+// ── Automatic logout after prolonged inactivity ─────────────────────────────
+const IDLE_LOGOUT_MS = Number(window.IDLE_LOGOUT_MS) || 10 * 60 * 1000; // 10 minutes
+let _idleLogoutTimer = null;
+
+function resetIdleLogoutTimer() {
+  if (!currentUser) return;
+  if (_idleLogoutTimer) clearTimeout(_idleLogoutTimer);
+  _idleLogoutTimer = setTimeout(() => {
+    if (!currentUser) return;
+    // Stop camera/liveness loops and tear down everything cleanly
+    logout().catch(() => {});
+    showAlertToast(`🔒 Signed out automatically after ${Math.round(IDLE_LOGOUT_MS / 60000)} minutes of inactivity.`, true);
+    if (window.iCashAccessibility) {
+      window.iCashAccessibility.announce(
+        `For your security, you have been signed out after ${Math.round(IDLE_LOGOUT_MS / 60000)} minutes of inactivity.`,
+        'assertive'
+      );
+    }
+  }, IDLE_LOGOUT_MS);
+}
+
+// User activity resets the idle timer (passive listeners — no perf impact)
+['click', 'keydown', 'touchstart', 'scroll'].forEach((evt) => {
+  window.addEventListener(evt, resetIdleLogoutTimer, { passive: true });
+});
+
+/** Stop every camera/liveness loop before leaving the authenticated area. */
+function stopAllCameraLoops() {
+  try { if (typeof teardownLoginScan === 'function') teardownLoginScan(); } catch (_) {}
+  try { if (typeof teardownVerifyGate === 'function') teardownVerifyGate(); } catch (_) {}
+  try { if (typeof teardownRegisterScan === 'function') teardownRegisterScan(); } catch (_) {}
+}
+
+// ============================================================
 // VIEW NAVIGATION & ROUTING
 // ============================================================
 function goTo(screenId) {
-  document.querySelectorAll('.screen').forEach((s) => s.classList.remove('active'));
   const target = document.getElementById(screenId);
-  if (target) {
-    target.classList.add('active');
-    window.scrollTo(0, 0);
+  if (!target) {
+    console.warn(`[iCash Nav] Target screen #${screenId} not found in DOM.`);
+    const welcome = document.getElementById('screen-welcome');
+    if (welcome) {
+      document.querySelectorAll('.screen').forEach((s) => s.classList.remove('active'));
+      welcome.classList.add('active');
+    }
+    return;
   }
+  document.querySelectorAll('.screen').forEach((s) => s.classList.remove('active'));
+  target.classList.add('active');
+  window.scrollTo(0, 0);
 }
 
 function switchView(viewName) {
@@ -145,7 +209,7 @@ function toggleSidebar() {
   const sidebar = document.getElementById('app-sidebar');
   const btn = document.getElementById('sidebar-toggle-btn');
   sidebar.classList.toggle('collapsed');
-  btn.textContent = sidebar.classList.contains('collapsed') ? 'â–¶' : 'â—€';
+  btn.textContent = sidebar.classList.contains('collapsed') ? '▶' : '◀';
 }
 
 // ============================================================
@@ -222,7 +286,7 @@ function showTransactionDetails(txId) {
     : 'Primary Digital Account';
 
   const statusEl = document.getElementById('drawer-tx-status');
-  statusEl.textContent = `${tx.status || 'COMPLETED'} âœ“`;
+  statusEl.textContent = `${tx.status || 'COMPLETED'} ✓`;
   statusEl.className = `status-badge ${(tx.status || 'completed').toLowerCase()}`;
 
   openDrawer('transaction');
@@ -256,7 +320,6 @@ async function startLogin() {
   sessionStorage.removeItem('icash_session_active');
   sessionStorage.removeItem('icash_session_token');
   currentUser = null;
-  pendingLoginUser = null;
   window._loginTargetUser = null;
   window._pendingBiometricToken = null;
   if (typeof teardownLoginScan === 'function') teardownLoginScan();
@@ -306,7 +369,7 @@ function handleDobChange() {
   const seniorBlock = document.getElementById('reg-senior-block');
   if (age !== null) {
     if (age >= 60) {
-      note.textContent = `Age: ${age} years Â· Senior Assisted Banking enabled.`;
+      note.textContent = `Age: ${age} years · Senior Assisted Banking enabled.`;
       seniorBlock.style.display = 'block';
     } else {
       note.textContent = `Age: ${age} years.`;
@@ -425,7 +488,7 @@ function addRegistrationEmergencyContactRow() {
   row.innerHTML = `
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
       <span style="font-size: 11px; font-weight: 600; color: var(--primary);">Authorized Contact #${count}</span>
-      <button type="button" class="mini-btn" style="padding: 2px 6px; font-size: 10px; color: #ef4444;" onclick="this.closest('.emergency-contact-row').remove()">Remove âœ•</button>
+      <button type="button" class="mini-btn" style="padding: 2px 6px; font-size: 10px; color: #ef4444;" onclick="this.closest('.emergency-contact-row').remove()">Remove ✕</button>
     </div>
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
       <div>
@@ -469,13 +532,13 @@ async function proceedToOtp() {
 // SHARED OTP LOGIC
 // ============================================================
 function maskMobile(mobile) {
-  if (!mobile || !/^\d{10}$/.test(mobile)) return '+91 â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢';
-  return '+91 â€¢â€¢â€¢â€¢â€¢â€¢' + mobile.slice(-4);
+  if (!mobile || !/^\d{10}$/.test(mobile)) return '+91 ••••••••••';
+  return '+91 ••••••' + mobile.slice(-4);
 }
 
 async function startOtpFlow(purpose, mobile) {
   document.getElementById('otp-eyebrow').textContent =
-    purpose === 'register' ? 'Step 2 of 3 Â· Mobile OTP' : 'Step 2 of 4 Â· Mobile OTP';
+    purpose === 'register' ? 'Step 2 of 3 · Mobile OTP' : 'Step 2 of 4 · Mobile OTP';
   document.getElementById('otp-mobile-display').textContent = maskMobile(mobile);
   OTP_DIGIT_IDS.forEach((id) => {
     document.getElementById(id).value = '';
@@ -485,7 +548,7 @@ async function startOtpFlow(purpose, mobile) {
   if (smsBanner) smsBanner.style.display = 'none';
 
   const msg = document.getElementById('otp-msg');
-  msg.textContent = 'Requesting verification codeâ€¦';
+  msg.textContent = 'Requesting verification code…';
   msg.className = 'modal-msg';
   goTo('screen-aadhaar-otp');
 
@@ -502,7 +565,7 @@ async function startOtpFlow(purpose, mobile) {
         smsCodeEl.textContent = displayCode;
         smsBanner.style.display = 'block';
       }
-      showAlertToast(`ðŸ“² Verification Code: [ ${displayCode} ]`);
+      showAlertToast(`📲 Verification Code: [ ${displayCode} ]`);
     }
 
     startOtpCountdown();
@@ -527,7 +590,7 @@ function updateOtpCountdown() {
   }
   const remaining = pendingOtp.expiresAt - Date.now();
   if (remaining <= 0) {
-    el.textContent = 'Code expired â€” please request a new code';
+    el.textContent = 'Code expired — please request a new code';
     clearInterval(otpCountdownTimer);
     return;
   }
@@ -567,7 +630,7 @@ async function verifyOtpCode() {
     return;
   }
 
-  msg.textContent = 'Verifying security codeâ€¦';
+  msg.textContent = 'Verifying security code…';
   msg.className = 'modal-msg';
 
   try {
@@ -578,7 +641,7 @@ async function verifyOtpCode() {
       return;
     }
 
-    msg.textContent = 'Mobile verified âœ“';
+    msg.textContent = 'Mobile verified ✓';
     msg.className = 'modal-msg ok';
     const purpose = pendingOtp.purpose;
     clearInterval(otpCountdownTimer);
@@ -605,7 +668,13 @@ function cancelOtp() {
   clearInterval(otpResendTimer);
   const purpose = pendingOtp ? pendingOtp.purpose : null;
   pendingOtp = null;
-  goTo(purpose === 'register' ? 'screen-register-form' : 'screen-login-aadhaar');
+  if (purpose === 'register') {
+    goTo('screen-register-form');
+  } else if (document.getElementById('screen-login-aadhaar')) {
+    goTo('screen-login-aadhaar');
+  } else {
+    goTo('screen-welcome');
+  }
 }
 
 function autoFillOtp(code) {
@@ -740,7 +809,7 @@ function stopCamera(videoEl) {
 }
 
 // beginRegisterScan / captureRegisterFace / cancelRegisterScan / teardownRegisterScan
-// â†’ Implemented in biometric.js (real face-api.js auto-scan engine)
+// → Implemented in biometric.js (real face-api.js auto-scan engine)
 
 // Login Aadhaar lookup
 async function verifyAadhaarLogin() {
@@ -751,7 +820,7 @@ async function verifyAadhaarLogin() {
     return;
   }
   statusDiv.innerHTML =
-    '<span style="color:var(--text-muted);font-size:12px;">Verifying recordsâ€¦</span>';
+    '<span style="color:var(--text-muted);font-size:12px;">Verifying records…</span>';
 
   try {
     const res = await window.iCashApi.loginAadhaar({ aadhaarLast4: last4 });
@@ -762,7 +831,7 @@ async function verifyAadhaarLogin() {
       return;
     }
     const targetUser = matchingUsers[0];
-    statusDiv.innerHTML = `<span style="color:var(--primary);font-size:12px;">âœ“ Verified: ${targetUser.name}</span>`;
+    statusDiv.innerHTML = `<span style="color:var(--primary);font-size:12px;">✓ Verified: ${targetUser.name}</span>`;
     window._loginTargetUser = targetUser;
     setTimeout(() => {
       goTo('screen-login-scan');
@@ -774,76 +843,64 @@ async function verifyAadhaarLogin() {
 }
 
 // beginLoginScan / captureLoginFace / cancelLoginScan / teardownLoginScan
-// â†’ Implemented in biometric.js (real face-api.js Euclidean matching engine)
+// → Implemented in biometric.js (server-authoritative challenge engine).
+//
+// NOTE: The normal login flow is purely biometric — Camera → Face Detection →
+// Face Recognition → Liveness Challenge (two blinks) → Authentication →
+// Dashboard. No PIN is requested. The Aadhaar + PIN path (screen-pin-login)
+// remains available only as an explicit recovery fallback for users whose
+// camera is unavailable, and is never part of the normal biometric flow.
 
-/**
- * promptLoginPin
- *
- * Shows the PIN entry screen after biometric identity has been confirmed.
- * REQUIRES a biometricToken (issued by POST /api/biometric/verify-challenge)
- * to prove that liveness AND server-side face matching both passed.
- *
- * @param {Object} user - The authenticated user object
- * @param {number} confidence - Face match confidence 0â€“1
- * @param {string|null} biometricToken - Short-lived JWT from verify-challenge
- */
-function promptLoginPin(user, confidence = 0.95, biometricToken = null) {
-  if (!biometricToken) {
-    console.error('[iCash Bio] Refusing PIN prompt without a server-issued biometric token.');
-    return;
+// ── Assisted / Voice Mode (accessed via the ⋮ overflow menu) ─────────────────
+function openAssistedVoiceMode() {
+  openModal('assisted-voice');
+  // Keep the voice control buttons in sync (mute state, speed, ON/OFF)
+  if (window.iCashAccessibility && typeof window.iCashAccessibility.updateVoiceControlsUI === 'function') {
+    window.iCashAccessibility.updateVoiceControlsUI();
   }
-  pendingLoginUser = user;
-  // Store the biometric token for possible use in enrollment after login
-  if (biometricToken) {
-    window._pendingBiometricToken = biometricToken;
+  // Move keyboard focus to the mic button for keyboard/screen-reader users
+  const mic = document.getElementById('voice-banking-mic-btn');
+  if (mic) {
+    try { mic.focus(); } catch (_) {}
   }
-  document.getElementById('login-pin-input').value = '';
-  document.getElementById('login-pin-msg').textContent = '';
-  const banner = document.getElementById('login-pin-banner');
-
-  const verifiedBadge =
-    `<span style="color:var(--success);font-size:11px;display:block;margin-top:2px;">âœ“ Liveness verified Â· Identity matched Â· Server-signed</span>`;
-
-  banner.innerHTML = `
-    <div class="av">${initials(user.name)}</div>
-    <div>
-      <strong>${biometricToken ? 'Biometric Verified' : 'Identity Matched'} â€” ${user.name}</strong>
-      <span>Match confidence: ${Math.round(confidence * 100)}% Â· Enter 4-digit security PIN</span>
-      ${verifiedBadge}
-    </div>
-  `;
-  goTo('screen-login-pin');
-  document.getElementById('login-pin-input').focus();
+  if (window.iCashAccessibility) {
+    window.iCashAccessibility.announce(
+      'Assisted voice mode opened. Tap the microphone button and speak a command, for example: check my balance.'
+    );
+  }
 }
 
-async function submitLoginPin() {
-  const pin = document.getElementById('login-pin-input').value.trim();
-  const msg = document.getElementById('login-pin-msg');
-  const u = pendingLoginUser;
-  if (!u) {
-    goTo('screen-welcome');
-    return;
-  }
-
-  msg.textContent = 'Authenticatingâ€¦';
-  msg.className = 'modal-msg';
-
+function closeAssistedVoiceMode() {
+  closeModal('assisted-voice');
+  // Stop any in-flight listening/speech so nothing continues after closing
   try {
-    const res = await window.iCashApi.loginPin({ userId: u.id, pin });
-    if (res.ok && res.user) {
-      currentUser = res.user;
-      pendingLoginUser = null;
-      if (res.isDuress)
-        showAlertToast('ðŸš¨ Emergency access mode activated Â· silent alert logged.', true);
-      enterDashboard();
-    }
-  } catch (err) {
-    msg.textContent = err.message || 'Incorrect PIN.';
-    msg.className = 'modal-msg err';
-  }
+    if (window.iCashVoice && typeof window.iCashVoice.stopListening === 'function') window.iCashVoice.stopListening();
+  } catch (_) {}
+  try {
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+  } catch (_) {}
 }
 
 async function attemptPinDirectLogin() {
+  // Clear any existing session or stale biometric state when starting a fresh login attempt
+  sessionStorage.removeItem('icash_session_active');
+  sessionStorage.removeItem('icash_session_token');
+  currentUser = null;
+  window._loginTargetUser = null;
+  window._pendingBiometricToken = null;
+  if (typeof teardownLoginScan === 'function') teardownLoginScan();
+  if (typeof _activeChallengeId !== 'undefined') {
+    // eslint-disable-next-line no-global-assign
+    _activeChallengeId = null;
+    _activeChallengeNonce = null;
+    _activeChallengeType = null;
+    _activeChallengeExp = null;
+    activeLivenessSessionId = null;
+    currentLivenessState = { live: false, blink_count: 0 };
+  }
+  // Clear server-side session cookie so a new login is fully unauthenticated until biometric succeeds
+  try { await window.iCashApi.logout(); } catch (_) {}
+
   const aadhaarLast4 = document.getElementById('pin-login-aadhaar').value.trim();
   const pin = document.getElementById('pin-login-pin').value.trim();
   const msg = document.getElementById('pin-login-msg');
@@ -854,7 +911,7 @@ async function attemptPinDirectLogin() {
     return;
   }
 
-  msg.textContent = 'Authenticatingâ€¦';
+  msg.textContent = 'Authenticating…';
   msg.className = 'modal-msg';
 
   try {
@@ -868,7 +925,7 @@ async function attemptPinDirectLogin() {
     const res = await window.iCashApi.loginPin({ userId: targetUser.id, pin });
     if (res.ok && res.user) {
       currentUser = res.user;
-      if (res.isDuress) showAlertToast('ðŸš¨ Emergency access mode activated.', true);
+      if (res.isDuress) showAlertToast('🚨 Emergency access mode activated.', true);
       enterDashboard();
     }
   } catch (err) {
@@ -882,9 +939,9 @@ function showMatch(user, isNew) {
   banner.innerHTML = `
     <div class="av">${initials(user.name)}</div>
     <div>
-      <strong>${isNew ? 'Welcome to iCash, ' : 'Identity Confirmed â€” '}${user.name}</strong>
+      <strong>${isNew ? 'Welcome to iCash, ' : 'Identity Confirmed — '}${user.name}</strong>
       <span>${isNew ? 'Account created successfully with primary digital savings wallet.' : 'Session established with bank-grade encryption.'}</span>
-      <span style="font-size:11px;color:var(--primary);display:block;margin-top:4px;">Masked Aadhaar: â€¢â€¢â€¢â€¢ ${user.aadhaarLast4} âœ“</span>
+      <span style="font-size:11px;color:var(--primary);display:block;margin-top:4px;">Masked Aadhaar: •••• ${user.aadhaarLast4} ✓</span>
     </div>
   `;
   goTo('screen-match');
@@ -920,7 +977,7 @@ async function loadDashboardData() {
   const aadhaarEl = document.getElementById('dash-masked-aadhaar');
   if (aadhaarEl) {
     aadhaarEl.textContent = currentUser.aadhaarLast4
-      ? `Aadhaar: â€¢â€¢â€¢â€¢ ${currentUser.aadhaarLast4}`
+      ? `Aadhaar: •••• ${currentUser.aadhaarLast4}`
       : 'Aadhaar: unavailable';
   }
 
@@ -974,7 +1031,7 @@ function renderBalanceHero(primaryAcc) {
 function toggleBalanceVisibility() {
   isBalanceHidden = !isBalanceHidden;
   const eyeBtn = document.getElementById('balance-eye-btn');
-  eyeBtn.textContent = isBalanceHidden ? 'ðŸ™ˆ' : 'ðŸ‘ï¸';
+  eyeBtn.textContent = isBalanceHidden ? '🙈' : '👁️';
   const primaryAcc = currentAccounts.find((a) => a.isPrimary) ||
     currentAccounts[0] || { balance: 15000 };
   renderBalanceHero(primaryAcc);
@@ -1024,12 +1081,12 @@ function renderAccountsGrid(accounts) {
           <div class="acc-logo-pill">${a.accountType === 'SAVINGS' ? 'S' : a.accountType === 'CURRENT' ? 'C' : 'V'}</div>
           <div>
             <div class="acc-name-label">${a.bankName} ${a.isPrimary ? '<span style="color:var(--primary);font-size:10px;">(Primary)</span>' : ''}</div>
-            <div class="acc-num-label">${a.accountNumberMasked} Â· ${a.accountType}</div>
+            <div class="acc-num-label">${a.accountNumberMasked} · ${a.accountType}</div>
           </div>
         </div>
         <span class="status-badge completed">${a.status}</span>
       </div>
-      <div class="acc-card-bal">${isBalanceHidden ? 'â‚¹ â€¢â€¢â€¢â€¢â€¢â€¢' : fmtMoney(a.balance)}</div>
+      <div class="acc-card-bal">${isBalanceHidden ? '₹ ••••••' : fmtMoney(a.balance)}</div>
       <div class="acc-card-actions">
         ${!a.isPrimary ? `<button class="mini-btn" onclick="setPrimaryAccount('${a.id}')">Make Primary</button>` : ''}
         <button class="mini-btn" onclick="switchView('transfers')">Transfer</button>
@@ -1090,7 +1147,7 @@ function renderTransactionsTable() {
   const startIdx = (currentPage - 1) * ITEMS_PER_PAGE;
   const pageItems = filteredTransactions.slice(startIdx, startIdx + ITEMS_PER_PAGE);
 
-  const icons = { TRANSFER: 'â†—', WITHDRAWAL: 'â†“', DEPOSIT: 'âœ¨', PAYMENT: 'ðŸ’³', REFUND: 'â†º' };
+  const icons = { TRANSFER: '↗', WITHDRAWAL: '↓', DEPOSIT: '✨', PAYMENT: '💳', REFUND: '↺' };
 
   const rowsHtml = pageItems
     .map((t) => {
@@ -1104,7 +1161,7 @@ function renderTransactionsTable() {
       <tr onclick="showTransactionDetails('${t.id || t.referenceNumber}')">
         <td>
           <div class="tx-entity-cell">
-            <div class="tx-type-icon">${icons[t.type] || 'â€¢'}</div>
+            <div class="tx-type-icon">${icons[t.type] || '•'}</div>
             <div>
               <strong>${t.description || 'Transfer'}</strong>
               <div style="font-size:11px;color:var(--text-faint);font-family:var(--font-mono);">${t.referenceNumber || t.id}</div>
@@ -1138,7 +1195,7 @@ function renderTransactionsTable() {
 
   const pageInfo = document.getElementById('pagination-info');
   if (pageInfo) {
-    pageInfo.textContent = `Showing ${startIdx + 1}â€“${Math.min(startIdx + ITEMS_PER_PAGE, filteredTransactions.length)} of ${filteredTransactions.length} records`;
+    pageInfo.textContent = `Showing ${startIdx + 1}–${Math.min(startIdx + ITEMS_PER_PAGE, filteredTransactions.length)} of ${filteredTransactions.length} records`;
   }
 }
 
@@ -1173,7 +1230,7 @@ function exportStatement() {
   a.href = url;
   a.download = `iCash_Statement_${Date.now()}.csv`;
   a.click();
-  showAlertToast('ðŸ“„ Bank statement CSV downloaded.');
+  showAlertToast('📄 Bank statement CSV downloaded.');
 }
 
 // ============================================================
@@ -1185,7 +1242,7 @@ function populateTransferSourceAccounts() {
   select.innerHTML = currentAccounts
     .map(
       (a) => `
-    <option value="${a.id}">${a.bankName} (${a.accountNumberMasked}) â€” ${fmtMoney(a.balance)}</option>
+    <option value="${a.id}">${a.bankName} (${a.accountNumberMasked}) — ${fmtMoney(a.balance)}</option>
   `
     )
     .join('');
@@ -1233,7 +1290,7 @@ async function confirmDeposit() {
     return;
   }
 
-  msg.textContent = 'Processing depositâ€¦';
+  msg.textContent = 'Processing deposit…';
   msg.className = 'modal-msg';
   if (btn) btn.disabled = true;
 
@@ -1242,7 +1299,7 @@ async function confirmDeposit() {
     if (res.ok) {
       closeModal('deposit');
       document.getElementById('deposit-amt').value = '';
-      showAlertToast(`âœ“ ${fmtMoney(amt)} deposited successfully.`);
+      showAlertToast(`✓ ${fmtMoney(amt)} deposited successfully.`);
       loadDashboardData();
     }
   } catch (err) {
@@ -1306,7 +1363,7 @@ function confirmSend() {
 
 // ============================================================
 // BIOMETRIC VERIFICATION GATE (HUMAN IN THE LOOP)
-// â†’ launchBiometricGate / captureVerifyFace / cancelVerify / teardownVerifyGate
+// → launchBiometricGate / captureVerifyFace / cancelVerify / teardownVerifyGate
 //   implemented in biometric.js (real face-api.js Euclidean matching, multi-face rejection)
 // ============================================================
 
@@ -1319,11 +1376,19 @@ function toggleVerifyPin() {
 async function submitVerifyPin() {
   const pin = document.getElementById('verify-pin-input').value.trim();
   const msg = document.getElementById('verify-msg');
+  const btn = document.getElementById('verify-pin-submit-btn');
   if (!/^\d{4}$/.test(pin)) {
     msg.textContent = 'Enter 4-digit PIN.';
     msg.className = 'modal-msg err';
     return;
   }
+
+  // PIN path authorizes this transaction — record the method for the audit trail
+  if (pendingVerificationAction) pendingVerificationAction.verifyMethod = 'PIN';
+  // Prevent accidental double submissions while processing
+  if (btn) btn.disabled = true;
+  msg.textContent = 'Processing…';
+  msg.className = 'modal-msg';
 
   try {
     await executePendingAction();
@@ -1332,17 +1397,37 @@ async function submitVerifyPin() {
   } catch (err) {
     msg.textContent = err.message || 'Authorization failed.';
     msg.className = 'modal-msg err';
+  } finally {
+    if (btn) btn.disabled = false;
   }
 }
 
+// Double-submission guard: only one transaction execution may be in flight.
+let _txProcessing = false;
+
 async function executePendingAction() {
   if (!pendingVerificationAction) return;
+  if (_txProcessing) return; // block rapid double submits
+
+  const action = pendingVerificationAction;
+  _txProcessing = true;
+
+  // Client-generated idempotency key — the backend enforces uniqueness, so a
+  // retried or duplicated submission can never double-spend.
+  if (!action.idempotencyKey) {
+    try {
+      action.idempotencyKey =
+        typeof crypto !== 'undefined' && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `TX_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+    } catch (_) {}
+  }
 
   try {
-    const res = await window.iCashApi.createTransaction(pendingVerificationAction);
+    const res = await window.iCashApi.createTransaction(action);
     if (res.ok) {
       showAlertToast(
-        `âœ“ ${pendingVerificationAction.description} of ${fmtMoney(pendingVerificationAction.amount)} authorized.`
+        `✓ ${action.description} of ${fmtMoney(action.amount)} authorized.`
       );
       pendingVerificationAction = null;
       loadDashboardData();
@@ -1353,16 +1438,70 @@ async function executePendingAction() {
       setTimeout(() => {
         closeModal('verify');
         goTo('screen-welcome');
-        showAlertToast('ðŸ”’ Session expired. Please sign in again to authorize transactions.', true);
+        showAlertToast('🔒 Session expired. Please sign in again to authorize transactions.', true);
       }, 1800);
     }
     throw err;
+  } finally {
+    _txProcessing = false;
   }
 }
 
 // ============================================================
 // ACCOUNTS, GRIEVANCES & SECURITY
 // ============================================================
+async function attemptDelegateWithdraw() {
+  const name = document.getElementById('delegate-collect-name').value.trim();
+  const otp = document.getElementById('delegate-collect-otp').value.trim();
+  const msg = document.getElementById('delegate-collect-msg');
+  const btn = document.getElementById('delegate-claim-btn');
+
+  if (name.length < 2) {
+    msg.textContent = "Enter the senior citizen's full name.";
+    msg.className = 'modal-msg err';
+    return;
+  }
+  if (!/^\d{6}$/.test(otp)) {
+    msg.textContent = 'Enter the 6-digit authorization OTP.';
+    msg.className = 'modal-msg err';
+    return;
+  }
+
+  // Prevent accidental double submissions while processing
+  if (btn) btn.disabled = true;
+  msg.textContent = 'Verifying authorization and disbursing cash…';
+  msg.className = 'modal-msg';
+
+  try {
+    const res = await window.iCashApi.claimDelegateWithdrawal({ seniorName: name, otp });
+    if (res && res.ok) {
+      msg.textContent = '';
+      const detail = document.getElementById('delegate-success-detail');
+      const refEl = document.getElementById('delegate-success-ref');
+      if (detail) {
+        detail.textContent =
+          `₹${Number(res.amount).toLocaleString('en-IN')} released to ${res.authorizedPersonName || name}.` +
+          (res.accountHolderName ? ` Account holder: ${res.accountHolderName}.` : '');
+      }
+      if (refEl) {
+        refEl.textContent = res.referenceNumber || res.transactionId || 'TX_DELEGATED';
+      }
+      showAlertToast(`✅ Delegated cash disbursed: ₹${Number(res.amount).toLocaleString('en-IN')}.`);
+      goTo('screen-delegate-success');
+      // Clear the OTP so it cannot be re-submitted from a stale form
+      document.getElementById('delegate-collect-otp').value = '';
+    } else {
+      msg.textContent = (res && res.message) || 'Authorization could not be verified.';
+      msg.className = 'modal-msg err';
+    }
+  } catch (err) {
+    msg.textContent = err.message || 'Disbursement failed. Please check the details and try again.';
+    msg.className = 'modal-msg err';
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
 async function submitAddAccount() {
   const bank = document.getElementById('new-acc-bank').value.trim();
   const type = document.getElementById('new-acc-type').value;
@@ -1378,7 +1517,7 @@ async function submitAddAccount() {
   try {
     await window.iCashApi.createAccount({ bankName: bank, accountType: type, initialBalance: bal });
     closeModal('add-account');
-    showAlertToast(`âœ“ ${bank} linked successfully.`);
+    showAlertToast(`✓ ${bank} linked successfully.`);
     loadDashboardData();
   } catch (err) {
     msg.textContent = err.message;
@@ -1410,7 +1549,7 @@ async function submitComplaint() {
   try {
     await window.iCashApi.createComplaint({ subject, description: desc });
     closeModal('complaint');
-    showAlertToast('âš–ï¸ Grievance ticket submitted for review.');
+    showAlertToast('⚖️ Grievance ticket submitted for review.');
     loadComplaintsList();
   } catch (err) {
     msg.textContent = err.message;
@@ -1484,7 +1623,7 @@ async function populateProfileView() {
   if (!currentUser) return;
   document.getElementById('prof-name').textContent = currentUser.name;
   document.getElementById('prof-phone').textContent = `+91 ${currentUser.phone}`;
-  document.getElementById('prof-aadhaar').textContent = `â€¢â€¢â€¢â€¢ ${currentUser.aadhaarLast4}`;
+  document.getElementById('prof-aadhaar').textContent = `•••• ${currentUser.aadhaarLast4}`;
   document.getElementById('prof-role').textContent = currentUser.role;
   document.getElementById('prof-senior').textContent = currentUser.isSenior
     ? 'Senior Assisted Banking Active'
@@ -1504,14 +1643,14 @@ async function populateProfileView() {
       if (promptBtn) promptBtn.style.display = 'none';
     } else if (isVerified) {
       badgeEl.style.display = 'inline-block';
-      badgeEl.textContent = 'Verified âœ“';
+      badgeEl.textContent = 'Verified ✓';
       badgeEl.style.background = 'rgba(16, 185, 129, 0.15)';
       badgeEl.style.color = '#34d399';
       badgeEl.style.borderColor = 'rgba(16, 185, 129, 0.3)';
       if (promptBtn) promptBtn.style.display = 'none';
     } else {
       badgeEl.style.display = 'inline-block';
-      badgeEl.textContent = 'Unverified âš ï¸';
+      badgeEl.textContent = 'Unverified ⚠️';
       badgeEl.style.background = 'rgba(239, 68, 68, 0.15)';
       badgeEl.style.color = '#f87171';
       badgeEl.style.borderColor = 'rgba(239, 68, 68, 0.3)';
@@ -1576,7 +1715,7 @@ async function openEmailVerificationModal() {
   }
   if (codeInput) codeInput.value = '';
   if (msgEl) {
-    msgEl.textContent = 'Preparing verification codeâ€¦';
+    msgEl.textContent = 'Preparing verification code…';
     msgEl.className = 'modal-msg';
   }
 
@@ -1623,7 +1762,7 @@ async function submitEmailVerification() {
   }
 
   if (msgEl) {
-    msgEl.textContent = 'Verifying codeâ€¦';
+    msgEl.textContent = 'Verifying code…';
     msgEl.className = 'modal-msg';
   }
 
@@ -1635,10 +1774,10 @@ async function submitEmailVerification() {
 
     if (res.ok || res.success) {
       if (msgEl) {
-        msgEl.textContent = 'Email Verified Successfully! âœ“';
+        msgEl.textContent = 'Email Verified Successfully! ✓';
         msgEl.className = 'modal-msg success';
       }
-      showAlertToast('Email verified successfully! Welcome email sent. âœ“');
+      showAlertToast('Email verified successfully! Welcome email sent. ✓');
 
       if (currentUser) {
         currentUser.emailVerified = true;
@@ -1666,7 +1805,7 @@ async function resendEmailVerification() {
   const msgEl = document.getElementById('email-verify-msg');
   const codeInput = document.getElementById('email-verify-code');
   if (msgEl) {
-    msgEl.textContent = 'Requesting fresh verification codeâ€¦';
+    msgEl.textContent = 'Requesting fresh verification code…';
     msgEl.className = 'modal-msg';
   }
 
@@ -1722,12 +1861,12 @@ async function confirmDeleteAccount() {
     return;
   }
   if (btn) btn.disabled = true;
-  msg.textContent = 'Deleting accountâ€¦ this may take a few seconds.';
+  msg.textContent = 'Deleting account… this may take a few seconds.';
   msg.className = 'modal-msg';
   try {
     await window.iCashApi.deleteMe({ pin });
-    // Success â€” clear local state and navigate to welcome
-    showAlertToast('Your account has been deleted. Redirectingâ€¦');
+    // Success — clear local state and navigate to welcome
+    showAlertToast('Your account has been deleted. Redirecting…');
     // Logout client-side state
     currentUser = null;
     currentAccounts = [];
@@ -1822,7 +1961,7 @@ async function submitEmergencyWithdrawalRequest() {
     return;
   }
 
-  msg.textContent = 'Verifying emergency authorization with banking coreâ€¦';
+  msg.textContent = 'Verifying emergency authorization with banking core…';
   msg.className = 'modal-msg';
   if (btn) btn.disabled = true;
 
@@ -1845,12 +1984,12 @@ async function submitEmergencyWithdrawalRequest() {
 
       // Update Step 2 UI
       document.getElementById('emg-holder-phone-badge').textContent =
-        res.accountHolderPhoneMasked || '+91 â€¢â€¢â€¢â€¢â€¢â€¢0000';
+        res.accountHolderPhoneMasked || '+91 ••••••0000';
 
       const devPill = document.getElementById('emg-dev-otp-banner');
       if (res.devOtp) {
         devPill.style.display = 'inline-flex';
-        devPill.innerHTML = `<span>âš¡ SMS Dispatched: OTP is <strong>${res.devOtp}</strong></span>`;
+        devPill.innerHTML = `<span>⚡ SMS Dispatched: OTP is <strong>${res.devOtp}</strong></span>`;
       } else {
         devPill.style.display = 'none';
       }
@@ -1905,7 +2044,7 @@ function startEmergencyCountdown(totalSeconds) {
       clearInterval(_emgCountdownInterval);
       _emgCountdownInterval = null;
       if (msgEl) {
-        msgEl.textContent = 'âš ï¸ The 5-minute authorization window has expired. Please initiate a new request.';
+        msgEl.textContent = '⚠️ The 5-minute authorization window has expired. Please initiate a new request.';
         msgEl.className = 'modal-msg err';
       }
       if (verifyBtn) verifyBtn.disabled = true;
@@ -1930,7 +2069,7 @@ async function submitEmergencyWithdrawalOtp() {
     return;
   }
 
-  msg.textContent = 'Verifying OTP & authorizing instant fund releaseâ€¦';
+  msg.textContent = 'Verifying OTP & authorizing instant fund release…';
   msg.className = 'modal-msg';
   if (btn) btn.disabled = true;
 
@@ -1949,7 +2088,7 @@ async function submitEmergencyWithdrawalOtp() {
       }
 
       // Populate Step 3 Voucher
-      document.getElementById('emg-receipt-amt').textContent = `â‚¹${Number(res.amount).toLocaleString('en-IN')}`;
+      document.getElementById('emg-receipt-amt').textContent = `₹${Number(res.amount).toLocaleString('en-IN')}`;
       document.getElementById('emg-receipt-ref').textContent = res.referenceNumber || res.transactionId || 'TX_EMERGENCY';
       document.getElementById('emg-receipt-date').textContent = new Date().toLocaleString('en-IN', {
         dateStyle: 'medium',
@@ -1959,13 +2098,13 @@ async function submitEmergencyWithdrawalOtp() {
       document.getElementById('emg-receipt-rep').textContent = `${res.authorizedPersonName} (${res.authorizedPersonPhone})`;
       document.getElementById('emg-receipt-idproof').textContent = res.authorizedIdNumber
         ? `${res.authorizedIdType || 'Gov ID'}: ${res.authorizedIdNumber}`
-        : 'Authorized Representative Verified âœ“';
+        : 'Authorized Representative Verified ✓';
 
       document.getElementById('emg-step-1').style.display = 'none';
       document.getElementById('emg-step-2').style.display = 'none';
       document.getElementById('emg-step-3').style.display = 'block';
 
-      showAlertToast(`ðŸš¨ Emergency Cash Release Authorized: â‚¹${Number(res.amount).toLocaleString('en-IN')} released to ${res.authorizedPersonName}.`);
+      showAlertToast(`🚨 Emergency Cash Release Authorized: ₹${Number(res.amount).toLocaleString('en-IN')} released to ${res.authorizedPersonName}.`);
 
       // Refresh dashboard if user is signed in
       if (typeof loadDashboardData === 'function') loadDashboardData();
@@ -1995,7 +2134,7 @@ async function submitPaymentRequest() {
     });
     closeModal('payment-request');
     showAlertToast(
-      `ðŸ“± POS Checkout Reference Generated: [ ${res.paymentRequest?.reference_code || 'POS_REF'} ]`
+      `📱 POS Checkout Reference Generated: [ ${res.paymentRequest?.reference_code || 'POS_REF'} ]`
     );
     loadMerchantPOSList();
   } catch (err) {
@@ -2047,7 +2186,6 @@ async function logout() {
     currentAccounts = [];
     currentTransactions = [];
     filteredTransactions = [];
-    pendingLoginUser = null;
     pendingVerificationAction = null;
     pendingOtp = null;
     window._pendingBiometricToken = null;
@@ -2075,7 +2213,7 @@ async function logout() {
 // ============================================================
 function fmtMoney(amt) {
   const n = Number(amt) || 0;
-  return 'â‚¹' + n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return '₹' + n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function initials(name) {
@@ -2156,13 +2294,31 @@ function initThreeBackground() {
   scene.add(particles);
   camera.position.z = 8;
 
+  // Reduced-motion support: pause the background animation when the user has
+  // reduced motion enabled (manual toggle or OS preference). The canvas stays
+  // visible as a static backdrop (hidden via CSS in reduced-motion).
+  let animationPaused = false;
+
   function animate() {
+    if (!animationPaused) {
+      particles.rotation.y += 0.0008;
+      particles.rotation.x += 0.0004;
+      renderer.render(scene, camera);
+    }
     requestAnimationFrame(animate);
-    particles.rotation.y += 0.0008;
-    particles.rotation.x += 0.0004;
-    renderer.render(scene, camera);
   }
   animate();
+
+  function applyMotionPreference(reduced) {
+    animationPaused = Boolean(reduced);
+    if (!animationPaused) renderer.render(scene, camera);
+  }
+  try {
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      applyMotionPreference(true);
+    }
+    window.addEventListener('icash:reduced-motion', (e) => applyMotionPreference(e.detail && e.detail.reduced));
+  } catch (_) {}
 
   window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
