@@ -116,6 +116,23 @@
                 <h3>Open Account</h3>
                 <p>Create a savings or merchant account with instant e-KYC onboarding.</p>
               </div>
+                        </div>
+
+            <!-- Voice Guided Mode toggle (Phase 10): controls spoken guidance for
+                 the whole authentication flow, persisted via the accessibility
+                 manager. Visual instructions remain available when OFF. -->
+            <div class="voice-mode-card" id="home-voice-mode-toggle" role="group" aria-label="Voice Guided Mode">
+              <div class="voice-mode-copy">
+                <strong id="voice-mode-title-text">Voice Guided Mode</strong>
+                <span id="voice-mode-help-text">Spoken guidance for every authentication step.</span>
+              </div>
+              <button
+                class="mini-btn"
+                id="toggle-voice-btn"
+                onclick="toggleVoiceGuidance()"
+                aria-pressed="true"
+                aria-label="Turn Voice Guided Mode on or off"
+              >&#128266; ON</button>
             </div>
 
             <div style="border-top: 1px solid var(--border); padding-top: 14px; margin-top: 14px;">
@@ -402,9 +419,12 @@
               <div class="scan-status" id="reg-scan-status">Positioning face&hellip;</div>
             </div>
 
-            <div id="reg-blink-dots" style="display: flex; justify-content: center; gap: 10px; margin: 12px 0 6px;">
-              <span class="blink-dot" id="reg-dot-1" style="display: inline-block; width: 14px; height: 14px; border-radius: 50%; background: rgba(255,255,255,0.18); border: 1px solid rgba(255,255,255,0.4); transition: all 0.25s;"></span>
-              <span class="blink-dot" id="reg-dot-2" style="display: inline-block; width: 14px; height: 14px; border-radius: 50%; background: rgba(255,255,255,0.18); border: 1px solid rgba(255,255,255,0.4); transition: all 0.25s;"></span>
+            <div id="reg-blink-dots" class="enroll-dots" role="status" aria-label="Face sample capture progress">
+              <span class="enroll-dot" id="reg-dot-1"></span>
+              <span class="enroll-dot" id="reg-dot-2"></span>
+              <span class="enroll-dot" id="reg-dot-3"></span>
+              <span class="enroll-dot" id="reg-dot-4"></span>
+              <span class="enroll-dot" id="reg-dot-5"></span>
             </div>
             <div id="reg-blink-instruction" style="font-size: 13px; font-weight: 600; color: var(--primary); margin-bottom: 12px; min-height: 20px;">Align face within circle to enroll</div>
 
@@ -437,48 +457,62 @@
         </div>
       </div>
 
-      <!-- SCREEN: LOGIN FACE SCAN (SERVER-AUTHORITATIVE 5-STEP UX) -->
+      <!-- SCREEN: LOGIN FACE SCAN (SERVER-AUTHORITATIVE 6-STAGE UX) -->
       <div class="screen" id="screen-login-scan">
         <div class="scan-wrap">
           <div class="card card-narrow" style="padding: 24px; text-align: center; position: relative;">
 
-            <!-- Three-Dot Assist Menu -->
-            <div class="assist-overflow" id="assist-overflow">
+                        <!-- Top Navigation Controls Bar -->
+            <div class="scan-top-controls" role="group" aria-label="Authentication options">
               <button
-                class="assist-menu-trigger"
-                id="assist-menu-button"
-                aria-label="Options menu"
-                aria-haspopup="true"
-                aria-expanded="false"
-                aria-controls="assist-menu"
-                onclick="toggleAssistMenu()"
-              >&#8942;</button>
-              <div
-                class="assist-menu"
-                id="assist-menu"
-                role="menu"
-                aria-label="Accessibility and Options"
-                hidden
+                class="top-control-btn"
+                id="login-voice-btn"
+                onclick="toggleVoiceGuidance()"
+                aria-label="Toggle Voice Guided Mode"
+                aria-pressed="true"
+                title="Voice Guided Mode — reads each verification step aloud"
               >
-                <button role="menuitem" class="assist-menu-item" onclick="toggleAssistMenu(false); openAssistedVoiceMode();">
-                  <span class="assist-icon">&#127908;</span> Assisted / Voice Mode
-                </button>
-                <button role="menuitem" class="assist-menu-item" onclick="toggleAssistMenu(false); openModal('accessibility-info')">
-                  <span class="assist-icon">&#9855;</span> Accessibility
-                </button>
-                <button role="menuitem" class="assist-menu-item" onclick="toggleAssistMenu(false); cancelLoginScan(); goTo('screen-pin-login');">
-                  <span class="assist-icon">&#128272;</span> Sign In with PIN / Aadhaar
-                </button>
-                <button role="menuitem" class="assist-menu-item" onclick="toggleAssistMenu(false); cancelLoginScan(); goTo('screen-welcome');">
-                  <span class="assist-icon">&#8592;</span> Back to Home
-                </button>
-              </div>
+                <span class="top-control-icon" aria-hidden="true">&#127908;</span>
+                <span class="top-control-label">Voice Mode</span>
+                <span class="top-control-state" id="login-voice-state">ON</span>
+              </button>
+              <button
+                class="top-control-btn"
+                id="login-accessibility-btn"
+                onclick="openModal('accessibility-info')"
+                aria-label="Accessibility Options"
+                title="Accessibility"
+              >
+                <span class="top-control-icon" aria-hidden="true">&#9855;</span>
+                <span class="top-control-label">Accessibility</span>
+              </button>
+              <button
+                class="top-control-btn"
+                id="login-help-btn"
+                onclick="openModal('ai-help')"
+                aria-label="AI Help Assistant"
+                title="AI Help Assistant"
+              >
+                <span class="top-control-icon" aria-hidden="true">&#10067;</span>
+                <span class="top-control-label">Help</span>
+              </button>
+              <button
+                class="top-control-btn top-control-btn-danger"
+                id="login-logout-btn"
+                onclick="cancelLoginScan(); logout();"
+                aria-label="Cancel and Logout"
+                title="Cancel & Logout"
+              >
+                <span class="top-control-icon" aria-hidden="true">&#128682;</span>
+                <span class="top-control-label">Logout</span>
+              </button>
             </div>
 
             <div class="eyebrow">Biometric Authentication</div>
-            <h2 style="margin-bottom: 8px;">Face &amp; Liveness Scan</h2>
+            <h2 style="margin-bottom: 8px;">Face &amp; Liveness Verification</h2>
             <p class="lead" style="margin-bottom: 14px; font-size: 13px;">
-              Server-authoritative facial identity &amp; two-blink liveness verification.
+              Center your face, then blink naturally when prompted. Every stage below is
+              verified by the iCash secure server &mdash; nothing is assumed.
             </p>
 
             <!-- Camera permission explanation -->
@@ -499,45 +533,36 @@
               <div class="scan-status" id="login-scan-status" role="status">Initializing&#8230;</div>
             </div>
 
-            <!-- Liveness Blink Progress -->
-            <div class="blink-progress" id="login-blink-progress" aria-label="Liveness progress">
-              <div class="blink-progress-label">Liveness Check</div>
-              <div class="blink-dots-row">
-                <span class="blink-chip" id="login-dot-1" aria-label="Blink 1 pending">
-                  <span class="blink-num">1</span>
-                  <span class="blink-check">&#10003;</span>
-                </span>
-                <span class="blink-divider"></span>
-                <span class="blink-chip" id="login-dot-2" aria-label="Blink 2 pending">
-                  <span class="blink-num">2</span>
-                  <span class="blink-check">&#10003;</span>
-                </span>
-              </div>
-            </div>
-
-            <!-- 5-Stage Visual Checklist -->
-            <div class="bio-checklist" id="login-bio-checklist" role="list" aria-label="Biometric Verification Steps">
-              <div class="bio-step active" id="login-step-1" role="listitem">
-                <span class="step-num" aria-hidden="true">1</span>
-                <span class="step-label">Center Face</span>
-              </div>
-              <div class="bio-step pending" id="login-step-2" role="listitem">
-                <span class="step-num" aria-hidden="true">2</span>
-                <span class="step-label">Live Check</span>
-              </div>
-              <div class="bio-step pending" id="login-step-3" role="listitem">
-                <span class="step-num" aria-hidden="true">3</span>
-                <span class="step-label">Blink Challenge</span>
-              </div>
-              <div class="bio-step pending" id="login-step-4" role="listitem">
-                <span class="step-num" aria-hidden="true">4</span>
-                <span class="step-label">Identity Match</span>
-              </div>
-              <div class="bio-step pending" id="login-step-5" role="listitem">
-                <span class="step-num" aria-hidden="true">5</span>
-                <span class="step-label">Authorized</span>
-              </div>
-            </div>
+            <!-- 6-Stage Liveness Progress — server-evidence driven only.
+                 A stage only shows ✓ after the underlying condition genuinely
+                 passed on the server; stages 5 & 6 require real verification
+                 results (face match, session establishment). -->
+            <ol class="liveness-steps" id="login-liveness-steps" aria-label="Verification progress">
+              <li class="liveness-step is-pending" id="login-ls-1">
+                <span class="ls-icon" aria-hidden="true">1</span>
+                <span class="ls-label">Center Face</span>
+              </li>
+              <li class="liveness-step is-pending" id="login-ls-2">
+                <span class="ls-icon" aria-hidden="true">2</span>
+                <span class="ls-label">Eyes Detected</span>
+              </li>
+              <li class="liveness-step is-pending" id="login-ls-3">
+                <span class="ls-icon" aria-hidden="true">3</span>
+                <span class="ls-label">Live Check</span>
+              </li>
+              <li class="liveness-step is-pending" id="login-ls-4">
+                <span class="ls-icon" aria-hidden="true">4</span>
+                <span class="ls-label">Blink Challenge</span>
+              </li>
+              <li class="liveness-step is-pending" id="login-ls-5">
+                <span class="ls-icon" aria-hidden="true">5</span>
+                <span class="ls-label">Identity Match</span>
+              </li>
+              <li class="liveness-step is-pending" id="login-ls-6">
+                <span class="ls-icon" aria-hidden="true">6</span>
+                <span class="ls-label">Authorized</span>
+              </li>
+            </ol>
 
             <div id="login-cam-error" class="cam-fallback" role="alert"></div>
 
@@ -548,13 +573,8 @@
                 id="login-retry-cam-btn"
                 style="display: none"
                 onclick="beginLoginScan()"
-                aria-label="Retry camera"
-              >Retry Camera</button>
-            </div>
-
-            <div class="thinking-trace" style="margin-top: 12px; justify-content: center;">
-              <span aria-hidden="true">&#10022;</span>
-              <span>128D ResNet Embedding &amp; Server-Side PAD Active</span>
+                aria-label="Try the liveness check again"
+              >Try Again</button>
             </div>
 
             <button
@@ -726,16 +746,6 @@
         </div>
       </div>
 
-      <!-- SCREEN: MATCH RESULT GREETING -->
-      <div class="screen" id="screen-match">
-        <div class="scan-wrap">
-          <div class="identity-banner" id="match-banner"></div>
-          <button class="btn btn-primary" style="max-width: 280px" onclick="enterDashboard()">
-            Enter Portal &rarr;
-          </button>
-        </div>
-      </div>
-
       <!-- ============================================================
        ENTERPRISE USER BANKING PORTAL (BEAUTIFUL UI DESIGN SYSTEM)
        ============================================================ -->
@@ -882,7 +892,7 @@
                   <button
                     class="assist-menu-trigger"
                     id="assist-menu-button-dash"
-                    aria-label="Options menu"
+                    aria-label="Open dashboard menu"
                     aria-haspopup="true"
                     aria-expanded="false"
                     aria-controls="assist-menu-dash"
@@ -900,8 +910,8 @@
                     <button role="menuitem" class="assist-menu-item" onclick="toggleAssistMenu(false); openModal('accessibility-info');">
                       <span class="assist-icon">&#9855;</span> Accessibility
                     </button>
-                    <button role="menuitem" class="assist-menu-item" onclick="toggleAssistMenu(false); switchView('support');">
-                      <span class="assist-icon">&#10067;</span> Help
+                    <button role="menuitem" class="assist-menu-item" onclick="toggleAssistMenu(false); openModal('ai-help');">
+                      <span class="assist-icon">&#10067;</span> Help &amp; AI Assistant
                     </button>
                     <button role="menuitem" class="assist-menu-item" onclick="toggleAssistMenu(false); logout();">
                       <span class="assist-icon">&#128682;</span> Logout
@@ -2612,6 +2622,56 @@
         </div>
       </div>
 
+      <!-- MODAL: AI HELP CHATBOT -->
+      <div class="modal-backdrop" id="modal-ai-help" role="dialog" aria-modal="true" aria-labelledby="ai-help-title">
+        <div class="modal" style="max-width: 520px;">
+          <button class="modal-close-btn" onclick="closeModal('ai-help')" aria-label="Close AI Help">&#10005;</button>
+          <div class="eyebrow">AI Assistant</div>
+          <h2 id="ai-help-title" style="font-size: 22px; margin-bottom: 4px;">iCash AI Help Assistant</h2>
+          <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 16px;">Ask me anything about banking, transactions, security, or app features.</p>
+
+          <div class="ai-chat-container" style="max-height: 320px; overflow-y: auto; margin-bottom: 16px; padding: 12px; background: var(--bg-inset); border: 1px solid var(--border); border-radius: var(--radius-md); display: flex; flex-direction: column; gap: 12px;">
+            <div class="ai-message" style="align-self: flex-start; max-width: 85%;">
+              <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">iCash Assistant</div>
+              <div style="background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px 16px; color: var(--text-main); line-height: 1.5;">Hello! I'm your iCash AI assistant. How can I help you today? You can ask me about:
+                <ul style="margin: 8px 0 0 18px; padding: 0; color: var(--text-muted); font-size: 12.5px; line-height: 1.7;">
+                  <li>Account balances and transactions</li>
+                  <li>Transferring money or paying bills</li>
+                  <li>Biometric login and security settings</li>
+                  <li>Deposits, withdrawals, and deposits</li>
+                  <li>Filing a grievance or dispute</li>
+                  <li>Accessibility and voice guidance</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <div class="ai-chat-input-row" style="display: flex; gap: 8px; margin-top: 8px;">
+            <input
+              id="ai-help-input"
+              type="text"
+              placeholder="Ask me anything... (e.g. 'How do I transfer money?')"
+              style="flex: 1; padding: 10px 14px; font-size: 13px; border-radius: var(--radius-md); border: 1px solid var(--border); background: var(--bg-surface); color: var(--text-main); font-family: var(--font-body);"
+              autocomplete="off"
+              aria-label="Ask AI assistant"
+            />
+            <button
+              class="btn btn-primary"
+              style="width: auto; min-width: 80px;"
+              onclick="sendAIHelpMessage()"
+              aria-label="Send message"
+            >Send</button>
+          </div>
+
+          <div class="ai-suggestions" style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px;" aria-label="Suggested questions">
+            <button class="ai-suggestion-chip" onclick="sendAIHelpMessage('How do I transfer money?')" style="background: var(--bg-inset); border: 1px solid var(--border); border-radius: var(--radius-pill); padding: 6px 12px; font-size: 11px; cursor: pointer; color: var(--text-muted); transition: all 0.2s;">How do I transfer money?</button>
+            <button class="ai-suggestion-chip" onclick="sendAIHelpMessage('Show my balance')" style="background: var(--bg-inset); border: 1px solid var(--border); border-radius: var(--radius-pill); padding: 6px 12px; font-size: 11px; cursor: pointer; color: var(--text-muted); transition: all 0.2s;">Show my balance</button>
+            <button class="ai-suggestion-chip" onclick="sendAIHelpMessage('How do I deposit money?')" style="background: var(--bg-inset); border: 1px solid var(--border); border-radius: var(--radius-pill); padding: 6px 12px; font-size: 11px; cursor: pointer; color: var(--text-muted); transition: all 0.2s;">How do I deposit?</button>
+            <button class="ai-suggestion-chip" onclick="sendAIHelpMessage('File a complaint')" style="background: var(--bg-inset); border: 1px solid var(--border); border-radius: var(--radius-pill); padding: 6px 12px; font-size: 11px; cursor: pointer; color: var(--text-muted); transition: all 0.2s;">File a complaint</button>
+          </div>
+        </div>
+      </div>
+
       <!-- MODAL: ACCESSIBLE TRANSACTION CONFIRMATION
            Used by Assisted / Voice Mode before ANY sensitive financial action.
            Voice commands NEVER execute transactions directly — this modal
@@ -2653,7 +2713,6 @@
     <script src="config.js"></script>
     <script src="accessibility.js"></script>
     <script src="assist-menu.js"></script>
-    <script src="lib/appwrite.js"></script>
     <script src="api.js"></script>
     <script src="biometric.js"></script>
     <script src="voice-banking.js"></script>

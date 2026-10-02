@@ -58,13 +58,14 @@ const CHALLENGE_REQUIRED_BLINKS = {
   BLINK_TWICE_WITH_RANDOM_INTERVAL: 2,
 };
 
-// Challenge stages for 5-stage state machine
+// Challenge stages for the 6-stage state machine
 const CHALLENGE_STAGES = {
   CENTER_FACE: 1, // Face detection + quality check
-  LIVE_CHECK: 2, // Calibration + PAD baseline
-  BLINK_CHALLENGE: 3, // Active challenge execution
-  IDENTITY_MATCH: 4, // Face descriptor matching
-  AUTHORIZED: 5, // Complete
+  EYES_DETECTED: 2, // 68-point landmarks localized, EAR computable
+  LIVE_CHECK: 3, // Calibration + PAD baseline
+  BLINK_CHALLENGE: 4, // Active challenge execution
+  IDENTITY_MATCH: 5, // Face descriptor matching
+  AUTHORIZED: 6, // Complete
 };
 
 // In-memory set of consumed biometric token signatures to guarantee absolute one-time use
@@ -77,6 +78,38 @@ const recognitionCache = new Map();
 const RECOGNITION_RECHECK_MS = 1800; // throttle: at most ~1 match attempt per 1.8s until recognized
 const RECOGNITION_CACHE_TTL_MS = 90 * 1000; // evict entries well after challenge TTL
 
+// In-memory challenge cache for the high-frequency frame loop.
+// The challenge row is immutable while frames stream (the nonce and expiry are
+// both fixed at creation and only the nonce is checked per frame), but
+// re-querying the remote DB on EVERY frame added a full WAN round trip
+// (1-6s) per frame — blinks then fall between two frames ~2s apart, the server
+// never counts them, the 60s challenge expires, and login times out.
+// Per-instance cache only: other instances fall back to the DB lookup, and the
+// entry is invalidated the moment the challenge is consumed at verify-challenge,
+// so the anti-replay guarantee is unaffected.
+const challengeCache = new Map();
+const CHALLENGE_CACHE_TTL_MS = 90 * 1000; // just above the 60s challenge TTL
+
+function cacheChallenge(challenge) {
+  if (challenge && challenge.id) {
+    challengeCache.set(challenge.id, { challenge, cachedAt: Date.now() });
+  }
+}
+
+function getCachedChallenge(challengeId) {
+  const entry = challengeCache.get(challengeId);
+  if (!entry) return null;
+  if (Date.now() - entry.cachedAt > CHALLENGE_CACHE_TTL_MS) {
+    challengeCache.delete(challengeId);
+    return null;
+  }
+  return entry.challenge;
+}
+
+function invalidateChallenge(challengeId) {
+  challengeCache.delete(challengeId);
+}
+
 // Minimum server liveness confidence required to authenticate when the Python
 // engine is authoritative. Calibrated so genuine two-blink sessions pass
 // comfortably (typical ≥ 0.65) while static/synthetic presentations score low.
@@ -86,24 +119,36 @@ const MIN_LIVENESS_CONFIDENCE = Number(process.env.BIOMETRIC_MIN_LIVENESS_CONFID
  * Computes a 0-1 liveness confidence score from engine telemetry.
  * Combines EAR variance, dynamic range, blink progress, blink-duration
  * regularity and PAD streak into a single layered-signal score.
+ *
+ * NOTE: telemetry-only (sent to the UI for progress display). The
+ * authoritative confidence used at verify time comes from the Python engine.
  */
 function computeLivenessConfidence(liveData) {
   try {
-    const ear = Number(liveData.ear) || 0;
-    const baseline = Number(liveData.baseline) || 0.29;
     const blinkCount = Number(liveData.blink_count) || 0;
     const required = Number(liveData.required_blinks) || 2;
+
+    // Without exactly one face there is no liveness evidence at all — a
+    // no-face frame must never score above zero (previously the EAR defaults
+    // alone produced 0.45 on empty frames).
+    if (!liveData.exactly_one_face) return 0;
 
     // Signal 1: blink progress (0-0.45)
     const progress = Math.min(blinkCount / required, 1) * 0.45;
 
     // Signal 2: EAR dynamic range relative to baseline (0-0.25)
     // A genuine session shows EAR dropping well below the resting baseline.
-    const range = Math.max(0, baseline - Math.min(ear, baseline));
-    const rangeScore = Math.min(range / (baseline * 0.5 || 0.15), 1) * 0.25;
+    const ear = Number(liveData.ear);
+    const baseline = Number(liveData.baseline);
+    let rangeScore = 0;
+    if (Number.isFinite(ear) && Number.isFinite(baseline) && baseline > 0) {
+      const range = Math.max(0, baseline - Math.min(ear, baseline));
+      rangeScore = Math.min(range / (baseline * 0.5), 1) * 0.25;
+    }
 
-    // Signal 3: presentation state (0-0.2) — quality gate and no spoof flags
-    const qualityScore = liveData.quality_ok === false ? 0 : 0.2;
+    // Signal 3: presentation state (0-0.2) — quality gate and no spoof flags.
+    // Unknown quality (undefined) contributes nothing.
+    const qualityScore = liveData.quality_ok === true ? 0.2 : 0;
 
     // Signal 4: face present and single (0-0.1)
     const faceScore = liveData.exactly_one_face ? 0.1 : 0;
@@ -172,6 +217,7 @@ class BiometricChallengeController {
           expires_at: expiresAt,
         },
       });
+      cacheChallenge(challenge);
 
       await SecurityService.recordEvent({
         userId: null,
@@ -214,7 +260,14 @@ class BiometricChallengeController {
           });
       }
 
-      const challenge = await prisma.biometricChallenge.findUnique({ where: { id: challengeId } });
+      // Serve the immutable challenge row from the in-memory cache first (the
+      // row cannot change while frames stream); fall back to a DB lookup for
+      // cache misses (e.g. multi-instance deployments).
+      let challenge = getCachedChallenge(challengeId);
+      if (!challenge) {
+        challenge = await prisma.biometricChallenge.findUnique({ where: { id: challengeId } });
+        if (challenge) cacheChallenge(challenge);
+      }
       if (!challenge || challenge.used_at || challenge.expires_at < new Date()) {
         return res
           .status(400)
@@ -275,7 +328,7 @@ class BiometricChallengeController {
       }
 
       // ── Preliminary server-side face recognition (real-time UX feedback) ────
-      // While the user is still in frame (after calibration), match the live
+      // While the user is still in frame (after eyes are detected), match the live
       // descriptor against enrolled templates so the UI can announce
       // "Face recognized" BEFORE the blink challenge completes.
       // SECURITY: this is feedback only — the authoritative identity match is
@@ -285,7 +338,7 @@ class BiometricChallengeController {
         if (
           liveData &&
           liveData.quality_ok &&
-          Number(liveData.current_step) >= 2 &&
+          Number(liveData.current_step) >= 3 &&
           !liveData.spoof_detected &&
           challenge.liveness_session_id &&
           !challenge.liveness_session_id.startsWith('local-')
@@ -462,6 +515,9 @@ class BiometricChallengeController {
         where: { id: challengeId },
         data: { used_at: new Date() },
       });
+      // Drop the frame-loop cache entry so no further frames can be streamed
+      // into this challenge after consumption (anti-replay enforced end-to-end)
+      invalidateChallenge(challengeId);
 
       // Gate 5: Server-Authoritative Liveness Verification
       let livenessPassed = false;
@@ -481,7 +537,15 @@ class BiometricChallengeController {
 
           if (verifyRes.ok) {
             const vData = await verifyRes.json();
-            livenessConfidence = computeLivenessConfidence(vData);
+            // The Python engine computes a layered liveness confidence from the
+            // full frame telemetry (EAR history, variance, blink progress, PAD).
+            // Trust the authoritative score when present — recomputing locally
+            // from the (deliberately minimal) verify response would inflate the
+            // score and defeat the confidence gate entirely.
+            livenessConfidence =
+              typeof vData.liveness_confidence === 'number'
+                ? vData.liveness_confidence
+                : computeLivenessConfidence(vData);
             if (vData.live && !vData.spoof_detected && vData.exactly_one_face) {
               // Confidence gate: even a "live" verdict below the minimum
               // threshold is not trusted for authentication.
@@ -533,7 +597,14 @@ class BiometricChallengeController {
 
       // Fallback verification for test suites / offline development
       if (!livenessPassed) {
-        if (process.env.NODE_ENV === 'production' && !process.env.ALLOW_DEV_LIVENESS_FALLBACK) {
+        // NOTE: env vars are strings — `!('false')` is false in JS, so a literal
+        // `ALLOW_DEV_LIVENESS_FALLBACK=false` must be parsed, not truthiness-checked,
+        // otherwise the production guard silently disables itself.
+        const allowDevLivenessFallback =
+          String(process.env.ALLOW_DEV_LIVENESS_FALLBACK || '')
+            .trim()
+            .toLowerCase() === 'true';
+        if (process.env.NODE_ENV === 'production' && !allowDevLivenessFallback) {
           // In production, never fallback to unverified liveness
           return res.status(503).json({
             ok: false,
@@ -566,7 +637,10 @@ class BiometricChallengeController {
             return res.status(403).json({
               ok: false,
               error: 'LivenessFailed',
-              message: "We couldn't confidently verify you. Please try again in good lighting, following the on-screen instructions.",
+              // Dev/test-only fallback path (production returns 503 above): surface
+              // the validator's reason so integrators can see exactly which
+              // temporal rule failed. The server-side audit log records it too.
+              message: temporalResult.reason,
             });
           }
         }

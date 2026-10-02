@@ -266,6 +266,166 @@ body {
   }
 }
 
+/* ── Home-page Voice Guided Mode toggle (Phase 10) ────────────────────────── */
+.voice-mode-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 14px 16px;
+  margin-bottom: 18px;
+  text-align: left;
+}
+
+.voice-mode-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.voice-mode-copy strong {
+  font-size: 13.5px;
+  color: var(--text-main);
+}
+
+.voice-mode-copy span {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+#toggle-voice-btn {
+  min-width: 92px;
+  justify-content: center;
+  font-weight: 600;
+}
+
+#toggle-voice-btn.active {
+  background: rgba(6, 182, 212, 0.14);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+/* ── Login Scan Top Controls Bar ────────────────────────────────── */
+.scan-top-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 4px;
+  flex-wrap: wrap;
+}
+
+.top-control-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 92px;
+  min-height: 40px;
+  padding: 8px 12px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  white-space: nowrap;
+}
+
+.top-control-btn:hover {
+  background: var(--bg-card-hover);
+  border-color: var(--primary);
+  color: var(--text-main);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(6, 182, 212, 0.15);
+}
+
+.top-control-btn:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.top-control-btn .top-control-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.top-control-btn .top-control-label {
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+@media (max-width: 480px) {
+  .top-control-btn .top-control-label {
+    display: none;
+  }
+  .top-control-btn {
+    min-width: 40px;
+    padding: 8px;
+  }
+}
+
+.top-control-btn-danger {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #f87171;
+}
+
+.top-control-btn-danger:hover {
+  background: rgba(239, 68, 68, 0.14);
+  border-color: #ef4444;
+  color: #fca5a5;
+}
+
+/* ON/OFF state pill (never color-only — text state is always visible) */
+.top-control-state {
+  font-size: 10px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  letter-spacing: 0.5px;
+  padding: 2px 7px;
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border);
+  color: var(--text-faint);
+}
+
+/* Voice Guided Mode active state — syncs with the global accessibility manager */
+.top-control-btn.active {
+  background: var(--primary-dim);
+  border-color: var(--primary);
+  color: var(--accent-cyan);
+}
+
+.top-control-btn.active .top-control-state {
+  background: rgba(6, 182, 212, 0.18);
+  border-color: rgba(6, 182, 212, 0.4);
+  color: var(--accent-cyan);
+}
+
+.top-control-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+@media (max-width: 480px) {
+  .top-control-btn .top-control-state {
+    display: none;
+  }
+}
+
+/* ── Home-page Voice Guided Mode toggle (Phase 10) ────────────────────────── */
+
+/* ── Sign-in / registration choice boxes (home screen) ────────────────────── */
 .choice-box {
   background: var(--bg-inset);
   border: 1px solid var(--border);
@@ -579,6 +739,10 @@ textarea:focus {
   width: 100%;
   height: 100%;
   pointer-events: none;
+  /* The video preview is mirrored (scaleX(-1)) so the user sees themselves
+     naturally; the detection overlay must be mirrored identically or the
+     face ring/landmarks appear on the wrong side of the face. */
+  transform: scaleX(-1);
 }
 
 .scan-status {
@@ -903,6 +1067,26 @@ textarea:focus {
 @media (max-width: 768px) {
   .mobile-nav-toggle {
     display: flex;
+  }
+  /* Keep the dashboard ⋮ menu reachable on phones: collapse the other
+     top-bar chrome instead of letting the cluster overflow the viewport. */
+  .command-search-btn {
+    display: none;
+  }
+  .user-profile-name {
+    display: none;
+  }
+  .top-right {
+    gap: 8px;
+  }
+}
+
+@media (max-width: 480px) {
+  .security-status-pill {
+    display: none;
+  }
+  .page-header-info p {
+    display: none;
   }
 }
 
@@ -2048,26 +2232,6 @@ textarea:focus {
   }
 }
 
-/* ---------------------------------------------------------------- */
-/* Camera error / fallback messaging                                 */
-/* These containers are always in the DOM but empty and invisible    */
-/* until startCamera() writes an error into them and adds .active.   */
-/* ---------------------------------------------------------------- */
-.cam-fallback {
-  display: none;
-  margin-top: 10px;
-  padding: 10px 12px;
-  background: rgba(239, 68, 68, 0.08);
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  border-radius: var(--radius-md);
-  color: #fca5a5;
-  font-family: var(--font-mono);
-  font-size: 11.5px;
-  line-height: 1.5;
-  text-align: left;
-}
-
-.cam-fallback.active {
   display: block;
 }
 
@@ -2265,342 +2429,15 @@ textarea:focus {
   box-shadow: 0 0 12px rgba(56, 189, 248, 0.45) !important;
 }
 
-/* 3. Accessibility & Assistive Services Toolbar */
-.accessible-toolbar {
-  position: sticky;
-  top: 0;
-  left: 0;
-  width: 100%;
-  z-index: 9999;
-  background: rgba(10, 15, 29, 0.94);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border-bottom: 1px solid rgba(56, 189, 248, 0.25);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
-  padding: 8px 16px;
-}
-
-/* Optional assistive controls live in an unobtrusive top-right overflow menu. */
-.assist-overflow {
-  position: fixed;
-  top: 12px;
-  right: 14px;
-  z-index: 10001;
-}
-
-.assist-menu-button {
-  width: 38px;
-  min-height: 38px;
-  border: 1px solid rgba(148, 163, 184, 0.42);
-  border-radius: 10px;
-  color: #e2e8f0;
-  background: rgba(15, 23, 42, 0.94);
-  font-size: 24px;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.assist-menu {
-  position: absolute;
-  top: 45px;
-  right: 0;
-  width: min(260px, calc(100vw - 28px));
-  padding: 6px;
-  border: 1px solid var(--border-strong);
-  border-radius: 12px;
-  background: var(--bg-surface);
-  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.38);
-}
-
-.assist-menu button {
-  width: 100%;
-  min-height: 46px;
-  padding: 10px 12px;
-  border: 0;
-  border-radius: 8px;
-  color: var(--text-main);
-  background: transparent;
-  text-align: left;
-  font: inherit;
-  font-weight: 650;
-  cursor: pointer;
-}
-
-.assist-menu button:hover,
-.assist-menu button:focus-visible { background: rgba(20, 184, 166, 0.15); }
-
-.assisted-voice-modal { max-width: 520px; padding: 28px; }
-.assisted-voice-actions { display: flex; gap: 12px; flex-wrap: wrap; margin: 20px 0; }
-.assisted-voice-actions .btn { min-height: 52px; flex: 1 1 190px; }
-.assisted-voice-help {
-  display: grid;
-  gap: 8px;
-  padding: 16px;
-  border: 1px solid var(--border-strong);
-  border-radius: 12px;
-  color: var(--text-muted);
-  background: var(--bg-inset);
-  line-height: 1.5;
-}
-.assisted-voice-help strong { color: var(--text-main); }
-.assisted-exit-btn { width: 100%; margin-top: 18px; min-height: 48px; }
-
-@media (max-width: 640px) {
-  .assist-overflow { top: 8px; right: 8px; }
-  .assist-menu-button { width: 42px; min-height: 42px; }
-}
-
-.accessible-toolbar-content {
-  max-width: 1280px;
-  margin: 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.accessible-brand {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.accessible-logo-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: #38bdf8;
-  box-shadow: 0 0 8px #38bdf8;
-}
-
-.accessible-title {
-  font-size: 13px;
-  font-weight: 700;
-  color: #f8fafc;
-  letter-spacing: 0.3px;
-  text-transform: uppercase;
-  font-family: var(--font-mono);
-}
-
-.accessible-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.accessible-tool-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #cbd5e1;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  min-height: 34px;
-}
-
-.accessible-tool-btn:hover {
-  background: rgba(255, 255, 255, 0.12);
-  color: #ffffff;
-  border-color: rgba(255, 255, 255, 0.3);
-}
-
-.accessible-tool-btn.active,
-.accessible-tool-btn[aria-pressed="true"] {
-  background: rgba(6, 182, 212, 0.2);
-  border-color: #06b6d4;
-  color: #22d3ee;
-  box-shadow: 0 0 10px rgba(6, 182, 212, 0.3);
-}
-
-.accessible-tool-btn.voice-btn {
-  border-color: rgba(20, 184, 166, 0.35);
-  color: #2dd4bf;
-}
-
-.accessible-tool-btn.voice-btn:hover {
-  background: rgba(20, 184, 166, 0.15);
-}
-
-.accessible-tool-btn.emergency-btn {
-  background: rgba(239, 68, 68, 0.12);
-  border-color: rgba(239, 68, 68, 0.4);
-  color: #fca5a5;
-}
-
-.accessible-tool-btn.emergency-btn:hover {
   background: rgba(239, 68, 68, 0.22);
   color: #ffffff;
   border-color: #ef4444;
 }
 
-/* 4. Multi-Modal Authentication Selector Grid */
-.auth-selector-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 10px;
-}
-
-.auth-choice-card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  padding: 14px 10px;
-  background: var(--bg-surface);
-  border: 2px solid var(--border);
-  border-radius: 12px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  color: var(--text-main);
-}
-
-.auth-choice-card:hover {
-  border-color: var(--primary);
-  background: var(--bg-card-hover);
-  transform: translateY(-2px);
-}
-
-.auth-choice-card.active,
-.auth-choice-card[aria-checked="true"] {
-  border-color: var(--primary);
-  background: rgba(6, 182, 212, 0.12);
-  box-shadow: 0 0 14px rgba(6, 182, 212, 0.25);
-}
-
-.auth-choice-card .choice-icon {
-  font-size: 26px;
-  margin-bottom: 6px;
-}
-
-.auth-choice-card strong {
-  font-size: 13.5px;
-  display: block;
-  margin-bottom: 2px;
-}
-
-.auth-choice-card small {
   font-size: 11px;
   color: var(--text-muted);
 }
 
-/* 5. Server-Authoritative 5-Step Biometric Checklist */
-.bio-checklist {
-  display: flex;
-  justify-content: space-between;
-  gap: 6px;
-  margin-bottom: 14px;
-}
-
-.bio-step {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 8px 4px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  transition: all 0.25s ease;
-}
-
-.bio-step .step-num {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.1);
-  font-size: 11px;
-  font-weight: 700;
-  font-family: var(--font-mono);
-  margin-bottom: 4px;
-  color: var(--text-muted);
-}
-
-.bio-step .step-label {
-  font-size: 10.5px;
-  font-weight: 600;
-  text-align: center;
-  color: var(--text-muted);
-  line-height: 1.2;
-}
-
-.bio-step.pending {
-  opacity: 0.55;
-}
-
-.bio-step.active {
-  border-color: #06b6d4;
-  background: rgba(6, 182, 212, 0.14);
-  box-shadow: 0 0 12px rgba(6, 182, 212, 0.25);
-  opacity: 1;
-}
-
-.bio-step.active .step-num {
-  background: #06b6d4;
-  color: #060912;
-  box-shadow: 0 0 8px #06b6d4;
-}
-
-.bio-step.active .step-label {
-  color: #38bdf8;
-  font-weight: 700;
-}
-
-.bio-step.completed {
-  border-color: #10b981;
-  background: rgba(16, 185, 129, 0.12);
-  opacity: 1;
-}
-
-.bio-step.completed .step-num {
-  background: #10b981;
-  color: #ffffff;
-}
-
-.bio-step.completed .step-label {
-  color: #34d399;
-}
-
-/* Dynamic Instruction Banner */
-.scan-instruction-banner {
-  padding: 10px 14px;
-  border-radius: 8px;
-  font-size: 13.5px;
-  font-weight: 600;
-  margin-bottom: 12px;
-  transition: all 0.2s ease;
-  text-align: center;
-}
-
-.scan-instruction-banner.info {
-  background: rgba(56, 189, 248, 0.12);
-  border: 1px solid rgba(56, 189, 248, 0.35);
-  color: #38bdf8;
-}
-
-.scan-instruction-banner.warning {
-  background: rgba(245, 158, 11, 0.14);
-  border: 1px solid rgba(245, 158, 11, 0.4);
-  color: #fbbf24;
-}
-
-.scan-instruction-banner.bad {
-  background: rgba(239, 68, 68, 0.15);
-  border: 1px solid rgba(239, 68, 68, 0.45);
-  color: #f87171;
-}
-
-.scan-instruction-banner.ok {
   background: rgba(16, 185, 129, 0.15);
   border: 1px solid rgba(16, 185, 129, 0.45);
   color: #34d399;
@@ -2804,129 +2641,81 @@ body.senior-mode p.lead {
   color: var(--success);
 }
 
-/* ============================================================
-   BIOMETRIC SCAN — 5-STEP CHECKLIST
-   ============================================================ */
-.bio-checklist {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  margin: 10px 0 6px;
-  flex-wrap: wrap;
-}
-.bio-step {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 11px;
-  font-family: var(--font-mono);
-  font-weight: 600;
-  padding: 4px 8px;
-  border-radius: var(--radius-pill);
-  border: 1px solid transparent;
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.bio-step.pending {
-  color: var(--text-faint);
-  border-color: var(--border);
-  background: rgba(255,255,255,0.03);
-}
-.bio-step.active {
-  color: var(--accent-cyan);
-  border-color: rgba(6, 182, 212, 0.4);
-  background: var(--primary-dim);
-  box-shadow: 0 0 10px rgba(6, 182, 212, 0.2);
-}
-.bio-step.completed {
-  color: var(--success);
-  border-color: rgba(16, 185, 129, 0.35);
-  background: rgba(16, 185, 129, 0.1);
-}
-.step-num {
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 10px;
-  background: currentColor;
-  color: var(--bg-main);
-}
-.bio-step.pending .step-num { background: var(--text-faint); }
-.bio-step.active .step-num  { background: var(--accent-cyan); }
-.bio-step.completed .step-num { background: var(--success); }
-.step-label { font-size: 10.5px; }
-
-/* ============================================================
-   BLINK PROGRESS INDICATOR
-   ============================================================ */
-.blink-progress {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  margin: 6px 0;
-}
-.blink-progress-label {
-  font-size: 10px;
-  font-family: var(--font-mono);
-  text-transform: uppercase;
-  letter-spacing: 0.8px;
-  color: var(--text-faint);
-}
-.blink-dots-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.blink-chip {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  border: 2px solid rgba(255,255,255,0.2);
-  background: rgba(255,255,255,0.04);
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-  position: relative;
-}
-.blink-chip .blink-num {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--text-faint);
-  font-family: var(--font-mono);
-}
-.blink-chip .blink-check {
-  display: none;
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--success);
-}
-.blink-chip.active {
-  border-color: var(--primary);
-  background: var(--primary-dim);
-  box-shadow: 0 0 16px rgba(6, 182, 212, 0.4);
-  animation: blink-pulse 1.2s ease-in-out infinite;
-}
-.blink-chip.active .blink-num { color: var(--accent-cyan); }
-.blink-chip.done {
-  border-color: var(--success);
-  background: rgba(16, 185, 129, 0.15);
-}
-.blink-chip.done .blink-num { display: none; }
-.blink-chip.done .blink-check { display: inline; }
-.blink-divider {
-  width: 28px;
-  height: 2px;
-  background: var(--border);
-  border-radius: 2px;
-}
-@keyframes blink-pulse {
   0%, 100% { box-shadow: 0 0 8px rgba(6,182,212,0.3); }
   50% { box-shadow: 0 0 20px rgba(6,182,212,0.6); }
+}
+
+  30% { transform: translateY(-4px); opacity: 1; }
+}
+
+/* ============================================================
+   AI HELP CHATBOT STYLES
+   ============================================================ */
+.ai-chat-container .ai-message {
+  animation: fadeIn 0.2s ease-out;
+}
+
+.ai-chat-container .ai-message.ai-typing {
+  opacity: 0.8;
+}
+
+.ai-chat-input-row input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-dim);
+}
+
+.ai-suggestion-chip:hover,
+.ai-suggestion-chip:focus-visible {
+  background: var(--primary-dim) !important;
+  border-color: var(--primary) !important;
+  color: var(--accent-cyan) !important;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(6, 182, 212, 0.2);
+}
+
+.ai-suggestion-chip:active {
+  transform: translateY(0);
+}
+
+/* Typing animation for AI */
+@keyframes typing-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-4px); opacity: 1; }
+}
+
+.typing-dots span {
+  animation: typing-bounce 1.4s infinite ease-in-out;
+}
+
+.typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+.typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+/* AI Chat message styles */
+.ai-message {
+  animation: fadeIn 0.2s ease-out;
+}
+
+.ai-message:first-child {
+  margin-top: 0;
+}
+
+/* AI chat scrollbar */
+.ai-chat-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.ai-chat-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.ai-chat-container::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+
+.ai-chat-container::-webkit-scrollbar-thumb:hover {
+  background: var(--border-strong);
 }
 
 /* ============================================================
@@ -3153,15 +2942,144 @@ body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after 
 }
 
 /* ============================================================
-   RESPONSIVE — MOBILE BIOMETRIC SCAN
+   6-STAGE LIVENESS PROGRESS (server-evidence driven)
+   ○ pending · ● active (pulsing) · ✓ done · ✕ error
+   Status is never color-only: the icon glyph and the ARIA
+   label change with every state transition.
    ============================================================ */
-@media (max-width: 480px) {
+.liveness-steps {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin: 12px 0 6px;
+  padding: 0;
+}
+
+.liveness-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 12px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-faint);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  white-space: nowrap;
+}
+
+.liveness-step .ls-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-faint);
+  flex-shrink: 0;
+  transition: all 0.25s ease;
+}
+
+.liveness-step .ls-label {
+  font-size: 11.5px;
+  line-height: 1.2;
+}
+
+/* Active stage — pulsing dot, always identifiable by glyph + glow */
+.liveness-step.is-active {
+  color: var(--accent-cyan);
+  border-color: rgba(6, 182, 212, 0.45);
+  background: var(--primary-dim);
+  box-shadow: 0 0 14px rgba(6, 182, 212, 0.22);
+}
+
+.liveness-step.is-active .ls-icon {
+  background: var(--accent-cyan);
+  color: #06222b;
+  animation: liveness-pulse 1.4s ease-in-out infinite;
+}
+
+/* Completed stage — check glyph + success tint */
+.liveness-step.is-done {
+  color: var(--success);
+  border-color: rgba(16, 185, 129, 0.38);
+  background: rgba(16, 185, 129, 0.1);
+}
+
+.liveness-step.is-done .ls-icon {
+  background: var(--success);
+  color: #04241a;
+}
+
+/* Failed stage — cross glyph + alert tint (specific failure text nearby) */
+.liveness-step.is-error {
+  color: var(--alert);
+  border-color: rgba(244, 63, 94, 0.45);
+  background: var(--alert-dim);
+}
+
+.liveness-step.is-error .ls-icon {
+  background: var(--alert);
+  color: #fff;
+}
+
+@keyframes liveness-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(34, 211, 238, 0.45); }
+  50% { box-shadow: 0 0 0 5px rgba(34, 211, 238, 0); }
+}
+
+/* ============================================================
+   ENROLLMENT SAMPLE DOTS (registration face capture)
+   ============================================================ */
+.enroll-dots {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin: 12px 0 6px;
+}
+
+.enroll-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  transition: all 0.25s ease;
+}
+
+.enroll-dot.captured {
+  background: var(--success);
+  border-color: var(--success);
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.45);
+}
+
+/* ============================================================
+   RESPONSIVE — MOBILE BIOMETRIC SCAN & LIVENESS PROGRESS
+   ============================================================ */
+@media (max-width: 560px) {
   .scan-frame { width: 240px; height: 240px; }
-  .bio-checklist { gap: 2px; }
-  .bio-step { padding: 3px 5px; font-size: 10px; }
-  .step-label { display: none; }
-  .assist-overflow { top: 10px; right: 10px; }
-  .blink-chip { width: 28px; height: 28px; }
+  /* Two-column grid keeps every stage label readable — labels are never
+     hidden, fixing the old bare-numbers "1 ✓ 2 ✓" display on phones. */
+  .liveness-steps {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+  .liveness-step {
+    justify-content: flex-start;
+    padding: 8px 10px;
+  }
+  .liveness-step .ls-label {
+    white-space: normal;
+  }
 }
 
 /* ============================================================

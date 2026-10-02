@@ -23,36 +23,26 @@ let otpCountdownTimer = null;
 let otpResendTimer = null;
 const OTP_DIGIT_IDS = ['od0', 'od1', 'od2', 'od3', 'od4', 'od5'];
 
-// Appwrite Web SDK Initialization
-let appwriteClient = null;
-let appwriteAccount = null;
-let appwriteDatabases = null;
-
-function initAppwrite() {
-  try {
-    if (typeof Appwrite !== 'undefined' && window.AppwriteLib) {
-      // Delegate to lib/appwrite.js which holds all config and auto-pings.
-      const result = window.AppwriteLib.initAppwriteClient();
-      if (result) {
-        appwriteClient    = result.client;
-        appwriteAccount   = result.account;
-        appwriteDatabases = result.databases;
-      }
-    }
-  } catch (err) {
-    console.warn('[Appwrite] Client initialization notice:', err);
-  }
-}
-
 // ============================================================
 // INITIALIZATION & EVENT LISTENERS
 // ============================================================
 window.addEventListener('DOMContentLoaded', async () => {
   // Each init step isolated - a failure in one never blocks the rest
-  try { initOtpDigitInputs(); } catch(e) { console.warn('[iCash Init] OTP inputs:', e); }
-  try { initCommandPaletteShortcuts(); } catch(e) { console.warn('[iCash Init] Command palette:', e); }
-  try { initThreeBackground(); } catch(e) { console.warn('[iCash Init] Three.js background:', e); }
-  try { initAppwrite(); } catch(e) { console.warn('[iCash Init] Appwrite:', e); }
+  try {
+    initOtpDigitInputs();
+  } catch (e) {
+    console.warn('[iCash Init] OTP inputs:', e);
+  }
+  try {
+    initCommandPaletteShortcuts();
+  } catch (e) {
+    console.warn('[iCash Init] Command palette:', e);
+  }
+  try {
+    initThreeBackground();
+  } catch (e) {
+    console.warn('[iCash Init] Three.js background:', e);
+  }
 
   // Check if an intentional active session is being restored (e.g. reload while on dashboard)
   try {
@@ -100,7 +90,10 @@ window.addEventListener('icash:unauthorized', () => {
     goTo('screen-welcome');
     showAlertToast('🔒 Your session has expired. Please sign in again.', true);
     if (window.iCashAccessibility) {
-      window.iCashAccessibility.announce('Your session has expired. Please sign in again.', 'assertive');
+      window.iCashAccessibility.announce(
+        'Your session has expired. Please sign in again.',
+        'assertive'
+      );
     }
   }
 });
@@ -116,7 +109,10 @@ function resetIdleLogoutTimer() {
     if (!currentUser) return;
     // Stop camera/liveness loops and tear down everything cleanly
     logout().catch(() => {});
-    showAlertToast(`🔒 Signed out automatically after ${Math.round(IDLE_LOGOUT_MS / 60000)} minutes of inactivity.`, true);
+    showAlertToast(
+      `🔒 Signed out automatically after ${Math.round(IDLE_LOGOUT_MS / 60000)} minutes of inactivity.`,
+      true
+    );
     if (window.iCashAccessibility) {
       window.iCashAccessibility.announce(
         `For your security, you have been signed out after ${Math.round(IDLE_LOGOUT_MS / 60000)} minutes of inactivity.`,
@@ -133,9 +129,15 @@ function resetIdleLogoutTimer() {
 
 /** Stop every camera/liveness loop before leaving the authenticated area. */
 function stopAllCameraLoops() {
-  try { if (typeof teardownLoginScan === 'function') teardownLoginScan(); } catch (_) {}
-  try { if (typeof teardownVerifyGate === 'function') teardownVerifyGate(); } catch (_) {}
-  try { if (typeof teardownRegisterScan === 'function') teardownRegisterScan(); } catch (_) {}
+  try {
+    if (typeof teardownLoginScan === 'function') teardownLoginScan();
+  } catch (_) {}
+  try {
+    if (typeof teardownVerifyGate === 'function') teardownVerifyGate();
+  } catch (_) {}
+  try {
+    if (typeof teardownRegisterScan === 'function') teardownRegisterScan();
+  } catch (_) {}
 }
 
 // ============================================================
@@ -323,17 +325,10 @@ async function startLogin() {
   window._loginTargetUser = null;
   window._pendingBiometricToken = null;
   if (typeof teardownLoginScan === 'function') teardownLoginScan();
-  if (typeof _activeChallengeId !== 'undefined') {
-    // eslint-disable-next-line no-global-assign
-    _activeChallengeId = null;
-    _activeChallengeNonce = null;
-    _activeChallengeType = null;
-    _activeChallengeExp = null;
-    activeLivenessSessionId = null;
-    currentLivenessState = { live: false, blink_count: 0 };
-  }
   // Clear server-side session cookie so a new login is fully unauthenticated until biometric succeeds
-  try { await window.iCashApi.logout(); } catch (_) {}
+  try {
+    await window.iCashApi.logout();
+  } catch (_) {}
 
   goTo('screen-login-aadhaar');
   const last4Input = document.getElementById('login-aadhaar-last4');
@@ -344,7 +339,7 @@ async function startLogin() {
 
 function startRegistration() {
   goTo('screen-register-form');
-  ['reg-name', 'reg-aadhaar', 'reg-mobile', 'reg-pin', 'reg-emergency-pin'].forEach(id => {
+  ['reg-name', 'reg-aadhaar', 'reg-mobile', 'reg-pin', 'reg-emergency-pin'].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
@@ -391,7 +386,9 @@ async function proceedToBiometrics() {
   const name = document.getElementById('reg-name').value.trim();
   const aadhaar = document.getElementById('reg-aadhaar').value.replace(/\s/g, '');
   const mobile = document.getElementById('reg-mobile').value.trim();
-  const email = document.getElementById('reg-email') ? document.getElementById('reg-email').value.trim() : '';
+  const email = document.getElementById('reg-email')
+    ? document.getElementById('reg-email').value.trim()
+    : '';
   const role = document.getElementById('reg-role').value;
   const pin = document.getElementById('reg-pin').value.trim();
   const emergencyPin = document.getElementById('reg-emergency-pin').value.trim();
@@ -439,7 +436,9 @@ async function proceedToBiometrics() {
 
   // Extract all trusted emergency contacts / authorized persons
   const emergencyContacts = [];
-  const contactRows = document.querySelectorAll('#reg-emergency-contacts-list .emergency-contact-row');
+  const contactRows = document.querySelectorAll(
+    '#reg-emergency-contacts-list .emergency-contact-row'
+  );
   contactRows.forEach((row) => {
     const cName = row.querySelector('.reg-ec-name')?.value.trim();
     const cPhone = row.querySelector('.reg-ec-phone')?.value.trim();
@@ -729,7 +728,12 @@ function cameraErrorMessage(err) {
     return "This browser doesn't support webcam access. Use PIN authorization to sign in.";
   }
   const name = err && err.name;
-  if (name === 'NotAllowedError' || name === 'PermissionDeniedError' || name === 'SecurityError' || name === 'AbortError') {
+  if (
+    name === 'NotAllowedError' ||
+    name === 'PermissionDeniedError' ||
+    name === 'SecurityError' ||
+    name === 'AbortError'
+  ) {
     return 'Camera access blocked. On Android: close any floating bubbles/overlays (such as Messenger Chat Heads or screen recorders) and tap Retry, or use PIN authorization below.';
   }
   if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
@@ -842,7 +846,7 @@ async function verifyAadhaarLogin() {
   }
 }
 
-// beginLoginScan / captureLoginFace / cancelLoginScan / teardownLoginScan
+// beginLoginScan / cancelLoginScan / teardownLoginScan
 // → Implemented in biometric.js (server-authoritative challenge engine).
 //
 // NOTE: The normal login flow is purely biometric — Camera → Face Detection →
@@ -855,13 +859,18 @@ async function verifyAadhaarLogin() {
 function openAssistedVoiceMode() {
   openModal('assisted-voice');
   // Keep the voice control buttons in sync (mute state, speed, ON/OFF)
-  if (window.iCashAccessibility && typeof window.iCashAccessibility.updateVoiceControlsUI === 'function') {
+  if (
+    window.iCashAccessibility &&
+    typeof window.iCashAccessibility.updateVoiceControlsUI === 'function'
+  ) {
     window.iCashAccessibility.updateVoiceControlsUI();
   }
   // Move keyboard focus to the mic button for keyboard/screen-reader users
   const mic = document.getElementById('voice-banking-mic-btn');
   if (mic) {
-    try { mic.focus(); } catch (_) {}
+    try {
+      mic.focus();
+    } catch (_) {}
   }
   if (window.iCashAccessibility) {
     window.iCashAccessibility.announce(
@@ -874,7 +883,8 @@ function closeAssistedVoiceMode() {
   closeModal('assisted-voice');
   // Stop any in-flight listening/speech so nothing continues after closing
   try {
-    if (window.iCashVoice && typeof window.iCashVoice.stopListening === 'function') window.iCashVoice.stopListening();
+    if (window.iCashVoice && typeof window.iCashVoice.stopListening === 'function')
+      window.iCashVoice.stopListening();
   } catch (_) {}
   try {
     if (window.speechSynthesis) window.speechSynthesis.cancel();
@@ -889,17 +899,10 @@ async function attemptPinDirectLogin() {
   window._loginTargetUser = null;
   window._pendingBiometricToken = null;
   if (typeof teardownLoginScan === 'function') teardownLoginScan();
-  if (typeof _activeChallengeId !== 'undefined') {
-    // eslint-disable-next-line no-global-assign
-    _activeChallengeId = null;
-    _activeChallengeNonce = null;
-    _activeChallengeType = null;
-    _activeChallengeExp = null;
-    activeLivenessSessionId = null;
-    currentLivenessState = { live: false, blink_count: 0 };
-  }
   // Clear server-side session cookie so a new login is fully unauthenticated until biometric succeeds
-  try { await window.iCashApi.logout(); } catch (_) {}
+  try {
+    await window.iCashApi.logout();
+  } catch (_) {}
 
   const aadhaarLast4 = document.getElementById('pin-login-aadhaar').value.trim();
   const pin = document.getElementById('pin-login-pin').value.trim();
@@ -934,19 +937,6 @@ async function attemptPinDirectLogin() {
   }
 }
 
-function showMatch(user, isNew) {
-  const banner = document.getElementById('match-banner');
-  banner.innerHTML = `
-    <div class="av">${initials(user.name)}</div>
-    <div>
-      <strong>${isNew ? 'Welcome to iCash, ' : 'Identity Confirmed — '}${user.name}</strong>
-      <span>${isNew ? 'Account created successfully with primary digital savings wallet.' : 'Session established with bank-grade encryption.'}</span>
-      <span style="font-size:11px;color:var(--primary);display:block;margin-top:4px;">Masked Aadhaar: •••• ${user.aadhaarLast4} ✓</span>
-    </div>
-  `;
-  goTo('screen-match');
-}
-
 // ============================================================
 // DASHBOARD & FINANCIAL DATA ENGINE
 // ============================================================
@@ -973,7 +963,10 @@ async function loadDashboardData() {
   const avatarEl = document.getElementById('top-avatar');
   if (avatarEl) avatarEl.textContent = initials(currentUser.name || 'CU');
   const phoneEl = document.getElementById('dash-masked-phone');
-  if (phoneEl) phoneEl.textContent = currentUser.phone ? `Mobile: +91 ${currentUser.phone}` : 'Mobile: unavailable';
+  if (phoneEl)
+    phoneEl.textContent = currentUser.phone
+      ? `Mobile: +91 ${currentUser.phone}`
+      : 'Mobile: unavailable';
   const aadhaarEl = document.getElementById('dash-masked-aadhaar');
   if (aadhaarEl) {
     aadhaarEl.textContent = currentUser.aadhaarLast4
@@ -989,7 +982,7 @@ async function loadDashboardData() {
   // Fetch real Accounts & Transactions
   try {
     const accRes = await window.iCashApi.getAccounts();
-    currentAccounts = (accRes && Array.isArray(accRes.accounts)) ? accRes.accounts : [];
+    currentAccounts = accRes && Array.isArray(accRes.accounts) ? accRes.accounts : [];
 
     const primaryAcc = currentAccounts.find((a) => a.isPrimary) || currentAccounts[0];
     if (!primaryAcc) {
@@ -999,9 +992,7 @@ async function loadDashboardData() {
     renderAccountsGrid(currentAccounts);
 
     const txRes = await window.iCashApi.getTransactions();
-    currentTransactions = (txRes && Array.isArray(txRes.transactions))
-      ? txRes.transactions
-      : [];
+    currentTransactions = txRes && Array.isArray(txRes.transactions) ? txRes.transactions : [];
     filteredTransactions = [...currentTransactions];
 
     renderInsightCards(primaryAcc.balance, currentTransactions, currentAccounts.length);
@@ -1016,12 +1007,12 @@ function renderBalanceHero(primaryAcc) {
   const bankLabel = document.getElementById('dash-primary-bank-label');
   const accMask = document.getElementById('dash-primary-acc-mask');
 
-  if (bankLabel) bankLabel.textContent = primaryAcc.bankName || "Bank account";
-  if (accMask) accMask.textContent = primaryAcc.accountNumberMasked || "Account number unavailable";
+  if (bankLabel) bankLabel.textContent = primaryAcc.bankName || 'Bank account';
+  if (accMask) accMask.textContent = primaryAcc.accountNumberMasked || 'Account number unavailable';
 
   if (balEl) {
     if (isBalanceHidden) {
-      balEl.textContent = "₹ ••••••";
+      balEl.textContent = '₹ ••••••';
     } else {
       balEl.textContent = fmtMoney(primaryAcc.balance);
     }
@@ -1402,6 +1393,201 @@ async function submitVerifyPin() {
   }
 }
 
+// ============================================================
+// AI HELP CHATBOT
+// ============================================================
+async function sendAIHelpMessage(prefillMessage) {
+  const input = document.getElementById('ai-help-input');
+  const container = document.querySelector('.ai-chat-container');
+  const message = prefillMessage || (input ? input.value.trim() : '');
+
+  if (!message) return;
+
+  if (input) input.value = '';
+
+  // Add user message
+  const userMsg = document.createElement('div');
+  userMsg.className = 'ai-message';
+  userMsg.style.cssText = 'align-self: flex-end; max-width: 85%;';
+  userMsg.innerHTML = `
+    <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">You</div>
+    <div style="background: var(--primary-dim); border: 1px solid var(--primary); border-radius: var(--radius-md); padding: 12px 16px; color: var(--text-main); line-height: 1.5;">${escapeHtml(message)}</div>
+  `;
+  container.appendChild(userMsg);
+
+  // Add typing indicator
+  const typingMsg = document.createElement('div');
+  typingMsg.className = 'ai-message ai-typing';
+  typingMsg.style.cssText = 'align-self: flex-start; max-width: 85%;';
+  typingMsg.innerHTML = `
+    <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">iCash Assistant</div>
+    <div style="background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px 16px; color: var(--text-main); line-height: 1.5;">
+      <span class="typing-dots" style="display: inline-flex; gap: 3px;">
+        <span style="width: 6px; height: 6px; border-radius: 50%; background: var(--primary); animation: typing-bounce 1.4s infinite ease-in-out;"></span>
+        <span style="width: 6px; height: 6px; border-radius: 50%; background: var(--primary); animation: typing-bounce 1.4s infinite ease-in-out 0.2s;"></span>
+        <span style="width: 6px; height: 6px; border-radius: 50%; background: var(--primary); animation: typing-bounce 1.4s infinite ease-in-out 0.4s;"></span>
+      </span>
+    </div>
+  `;
+  container.appendChild(typingMsg);
+  container.scrollTop = container.scrollHeight;
+
+  if (window.iCashAccessibility) {
+    window.iCashAccessibility.announce('AI Assistant is thinking...');
+  }
+
+  try {
+    // Response resolution order:
+    // 1. Built-in deterministic step-by-step guides — how-to/navigation
+    //    questions have exact, identical answers for every customer, and are
+    //    also the only source available pre-login (the AI endpoint requires an
+    //    authenticated session).
+    // 2. The REAL backend AI (grounded in the account's actual transactions,
+    //    POST /api/v2/ai/chat) — used for free-form questions the guides
+    //    don't cover, when the user is signed in. If it is unavailable the
+    //    guide fallback is used. No artificial "thinking" delay is added.
+    let response = generateAIResponse(message);
+    const isGuidedAnswer = !response.startsWith('I can guide you through iCash step by step.');
+
+    if (!isGuidedAnswer && currentUser && window.iCashApi && window.iCashApi.ai) {
+      try {
+        const res = await window.iCashApi.ai.chat(message);
+        if (res && res.ok && res.answer) {
+          response = res.answer;
+        }
+      } catch (_) {
+        // Backend AI unavailable → keep the guide fallback above
+      }
+    }
+
+    container.removeChild(typingMsg);
+
+    const aiMsg = document.createElement('div');
+    aiMsg.className = 'ai-message';
+    aiMsg.style.cssText = 'align-self: flex-start; max-width: 85%;';
+    // Escape FIRST, then convert newlines — responses are never trusted HTML
+    const safeResponse = escapeHtml(response).replace(/\n/g, '<br>');
+    aiMsg.innerHTML = `
+      <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">iCash Assistant</div>
+      <div style="background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px 16px; color: var(--text-main); line-height: 1.5;">${safeResponse}</div>
+    `;
+    container.appendChild(aiMsg);
+    container.scrollTop = container.scrollHeight;
+
+    if (window.iCashAccessibility) {
+      window.iCashAccessibility.announce(response);
+    }
+  } catch (e) {
+    container.removeChild(typingMsg);
+    const errMsg = document.createElement('div');
+    errMsg.className = 'ai-message';
+    errMsg.style.cssText = 'align-self: flex-start; max-width: 85%;';
+    errMsg.innerHTML = `
+      <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">iCash Assistant</div>
+      <div style="background: var(--alert-dim); border: 1px solid var(--alert); border-radius: var(--radius-md); padding: 12px 16px; color: var(--alert); line-height: 1.5;">Sorry, I encountered an error. Please try again.</div>
+    `;
+    container.appendChild(errMsg);
+    container.scrollTop = container.scrollHeight;
+  }
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function generateAIResponse(message) {
+  const msg = message.toLowerCase();
+
+  // The assistant NEVER performs financial actions — it only provides steps
+  // that the customer performs and confirms themselves.
+
+  // Balance (read-only, from genuinely authenticated data)
+  if (msg.includes('balance') || msg.includes('how much') || msg.includes('my money')) {
+    if (currentUser && currentAccounts && currentAccounts.length > 0) {
+      const primary = currentAccounts.find((a) => a.isPrimary) || currentAccounts[0];
+      const bal = primary ? Number(primary.balance || 0).toLocaleString('en-IN') : 'unavailable';
+      const bank = primary && primary.bankName ? ` in your ${primary.bankName} account` : '';
+      return `Your current balance is ₹${bal} rupees${bank}.`;
+    }
+    return "I can only read your balance once you're signed in. Steps:\n1. Complete the biometric face scan, or use Aadhaar & PIN sign-in.\n2. Open the dashboard — your balance is shown on the main card.";
+  }
+
+  // Deposit
+  if (msg.includes('deposit') || msg.includes('add money')) {
+    return 'Steps to deposit money:\n1. Open the Dashboard.\n2. Select Deposit Money.\n3. Enter the amount.\n4. Review the details.\n5. Confirm the transaction yourself.';
+  }
+
+  // Transfer
+  if (msg.includes('transfer') || msg.includes('send money') || msg.includes('pay person')) {
+    return 'Steps to transfer money:\n1. Open Transfer Money from the sidebar or Quick Actions.\n2. Choose the debiting account.\n3. Enter the beneficiary name and amount.\n4. Proceed to the biometric authorization gate.\n5. Complete the face verification yourself — the transfer only executes after you confirm it.';
+  }
+
+  // Withdraw
+  if (msg.includes('withdraw') || msg.includes('cash withdrawal') || msg.includes('atm')) {
+    return 'Steps to withdraw cash:\n1. Open the Dashboard.\n2. Select Withdraw.\n3. Enter or pick the amount.\n4. Proceed to biometric authorization.\n5. Complete the face verification (or use your 4-digit PIN) yourself.';
+  }
+
+  // Biometric login / camera troubleshooting
+  if (
+    msg.includes('biometric') ||
+    msg.includes('face scan') ||
+    msg.includes('login') ||
+    msg.includes('sign in') ||
+    msg.includes('log in')
+  ) {
+    return "Biometric sign-in steps:\n1. Choose Customer Sign In on the home screen.\n2. Verify your identity with your Aadhaar last 4.\n3. Center your face in the camera frame.\n4. Blink naturally when prompted — the liveness check requires a real blink.\n5. Wait for identity verification, then you're signed in.\n\nCamera not working? Grant camera permission in your browser, ensure good lighting, or use the Aadhaar & PIN sign-in link instead.";
+  }
+
+  if (msg.includes('camera') || msg.includes('webcam') || msg.includes('blink')) {
+    return 'Camera & blink troubleshooting:\n1. Allow camera permission when your browser asks.\n2. Move to a well-lit area — face the light source.\n3. Center your face inside the frame (not too close, not too far).\n4. Keep both eyes visible and blink naturally once when prompted.\n5. If it still fails, tap Try Again, or use the Aadhaar & PIN sign-in.';
+  }
+
+  // Transactions
+  if (
+    msg.includes('transaction') ||
+    msg.includes('statement') ||
+    msg.includes('history') ||
+    msg.includes('passbook')
+  ) {
+    return 'Steps to view your transactions:\n1. Sign in and open the dashboard.\n2. Select Transactions from the sidebar.\n3. Use the filter chips or search to find specific records.\n4. Select any row for full details, or export a CSV statement.';
+  }
+
+  // Accessibility / voice mode
+  if (
+    msg.includes('accessib') ||
+    msg.includes('voice') ||
+    msg.includes('contrast') ||
+    msg.includes('large text')
+  ) {
+    return 'Accessibility & voice guidance:\n1. Select the Accessibility control (login screen or the ⋮ menu on the dashboard).\n2. Toggle High Contrast, Large Text, Reduce Motion or Voice Guidance.\n3. Voice Guided Mode reads each verification step aloud when enabled.\n4. Changes apply immediately and are remembered on this device.';
+  }
+
+  // Grievance
+  if (
+    msg.includes('complaint') ||
+    msg.includes('grievance') ||
+    msg.includes('dispute') ||
+    msg.includes('help') ||
+    msg.includes('support')
+  ) {
+    return 'Steps to file a grievance:\n1. Open Help & Support from the sidebar.\n2. Select File a Grievance.\n3. Enter the subject and describe the issue.\n4. Submit — your ticket is reviewed by a grievance officer.\n5. Track the status in the Dispute Tickets table.';
+  }
+
+  // Logout
+  if (msg.includes('logout') || msg.includes('log out') || msg.includes('sign out')) {
+    return "Steps to sign out:\n1. Open the ⋮ menu on the dashboard top bar.\n2. Select Logout.\n3. Your session is securely ended and the camera is stopped.\n\nTip: you can also say 'logout' in Assisted / Voice Mode.";
+  }
+
+  // Default response
+  return "I can guide you through iCash step by step. Try asking:\n• 'How do I deposit money?'\n• 'How do I transfer money?'\n• 'Show my balance' (after sign-in)\n• 'Camera not working'\n• 'How do I enable voice mode?'";
+}
+
+// ============================================================
+// DOUBLE-SUBMISSION GUARD
+// ============================================================
+
 // Double-submission guard: only one transaction execution may be in flight.
 let _txProcessing = false;
 
@@ -1426,9 +1612,7 @@ async function executePendingAction() {
   try {
     const res = await window.iCashApi.createTransaction(action);
     if (res.ok) {
-      showAlertToast(
-        `✓ ${action.description} of ${fmtMoney(action.amount)} authorized.`
-      );
+      showAlertToast(`✓ ${action.description} of ${fmtMoney(action.amount)} authorized.`);
       pendingVerificationAction = null;
       loadDashboardData();
     }
@@ -1486,7 +1670,9 @@ async function attemptDelegateWithdraw() {
       if (refEl) {
         refEl.textContent = res.referenceNumber || res.transactionId || 'TX_DELEGATED';
       }
-      showAlertToast(`✅ Delegated cash disbursed: ₹${Number(res.amount).toLocaleString('en-IN')}.`);
+      showAlertToast(
+        `✅ Delegated cash disbursed: ₹${Number(res.amount).toLocaleString('en-IN')}.`
+      );
       goTo('screen-delegate-success');
       // Clear the OTP so it cannot be re-submitted from a stale form
       document.getElementById('delegate-collect-otp').value = '';
@@ -1941,7 +2127,8 @@ async function submitEmergencyWithdrawalRequest() {
   const btn = document.getElementById('emg-submit-req-btn');
 
   if (!ident || ident.length < 2) {
-    msg.textContent = "Please enter the account holder's identifier (mobile, Aadhaar last 4, or full name).";
+    msg.textContent =
+      "Please enter the account holder's identifier (mobile, Aadhaar last 4, or full name).";
     msg.className = 'modal-msg err';
     return;
   }
@@ -2044,7 +2231,8 @@ function startEmergencyCountdown(totalSeconds) {
       clearInterval(_emgCountdownInterval);
       _emgCountdownInterval = null;
       if (msgEl) {
-        msgEl.textContent = '⚠️ The 5-minute authorization window has expired. Please initiate a new request.';
+        msgEl.textContent =
+          '⚠️ The 5-minute authorization window has expired. Please initiate a new request.';
         msgEl.className = 'modal-msg err';
       }
       if (verifyBtn) verifyBtn.disabled = true;
@@ -2088,14 +2276,18 @@ async function submitEmergencyWithdrawalOtp() {
       }
 
       // Populate Step 3 Voucher
-      document.getElementById('emg-receipt-amt').textContent = `₹${Number(res.amount).toLocaleString('en-IN')}`;
-      document.getElementById('emg-receipt-ref').textContent = res.referenceNumber || res.transactionId || 'TX_EMERGENCY';
+      document.getElementById('emg-receipt-amt').textContent =
+        `₹${Number(res.amount).toLocaleString('en-IN')}`;
+      document.getElementById('emg-receipt-ref').textContent =
+        res.referenceNumber || res.transactionId || 'TX_EMERGENCY';
       document.getElementById('emg-receipt-date').textContent = new Date().toLocaleString('en-IN', {
         dateStyle: 'medium',
         timeStyle: 'short',
       });
-      document.getElementById('emg-receipt-holder').textContent = res.accountHolderName || 'Account Holder';
-      document.getElementById('emg-receipt-rep').textContent = `${res.authorizedPersonName} (${res.authorizedPersonPhone})`;
+      document.getElementById('emg-receipt-holder').textContent =
+        res.accountHolderName || 'Account Holder';
+      document.getElementById('emg-receipt-rep').textContent =
+        `${res.authorizedPersonName} (${res.authorizedPersonPhone})`;
       document.getElementById('emg-receipt-idproof').textContent = res.authorizedIdNumber
         ? `${res.authorizedIdType || 'Gov ID'}: ${res.authorizedIdNumber}`
         : 'Authorized Representative Verified ✓';
@@ -2104,14 +2296,18 @@ async function submitEmergencyWithdrawalOtp() {
       document.getElementById('emg-step-2').style.display = 'none';
       document.getElementById('emg-step-3').style.display = 'block';
 
-      showAlertToast(`🚨 Emergency Cash Release Authorized: ₹${Number(res.amount).toLocaleString('en-IN')} released to ${res.authorizedPersonName}.`);
+      showAlertToast(
+        `🚨 Emergency Cash Release Authorized: ₹${Number(res.amount).toLocaleString('en-IN')} released to ${res.authorizedPersonName}.`
+      );
 
       // Refresh dashboard if user is signed in
       if (typeof loadDashboardData === 'function') loadDashboardData();
     }
   } catch (err) {
     if (btn) btn.disabled = false;
-    msg.textContent = err.message || 'OTP verification failed. Please check the code received by the account holder.';
+    msg.textContent =
+      err.message ||
+      'OTP verification failed. Please check the code received by the account holder.';
     msg.className = 'modal-msg err';
   }
 }
@@ -2173,9 +2369,19 @@ async function loadMerchantPOSList() {
 
 async function logout() {
   // Stop any camera/liveness loops before leaving the authenticated area.
-  try { if (typeof teardownLoginScan === 'function') teardownLoginScan(); } catch (_) {}
-  try { if (typeof teardownVerifyGate === 'function') teardownVerifyGate(); } catch (_) {}
-  try { if (typeof teardownRegisterScan === 'function') teardownRegisterScan(); } catch (_) {}
+  try {
+    if (typeof teardownLoginScan === 'function') teardownLoginScan();
+  } catch (_) {}
+  try {
+    if (typeof teardownVerifyGate === 'function') teardownVerifyGate();
+  } catch (_) {}
+  try {
+    if (typeof teardownRegisterScan === 'function') teardownRegisterScan();
+  } catch (_) {}
+  // Stop Three.js background animation
+  try {
+    window.dispatchEvent(new CustomEvent('icash:reduced-motion', { detail: { reduced: true } }));
+  } catch (_) {}
 
   try {
     await window.iCashApi.logout();
@@ -2190,21 +2396,19 @@ async function logout() {
     pendingOtp = null;
     window._pendingBiometricToken = null;
     window._loginTargetUser = null;
-    // Clear biometric challenge and liveness session state
-    if (typeof _activeChallengeId !== 'undefined') {
-      try {
-        // eslint-disable-next-line no-global-assign
-        _activeChallengeId    = null;
-        _activeChallengeNonce = null;
-        _activeChallengeType  = null;
-        _activeChallengeExp   = null;
-        activeLivenessSessionId = null;
-        currentLivenessState = { live: false, blink_count: 0 };
-      } catch (_) {}
-    }
+    if (typeof _idleLogoutTimer !== 'undefined' && _idleLogoutTimer) clearTimeout(_idleLogoutTimer);
     closeAllModals();
+    closeAllDrawers();
+    sessionStorage.removeItem('icash_session_active');
+    sessionStorage.removeItem('icash_session_token');
     goTo('screen-welcome');
-    showAlertToast('Signed out of secure banking session.');
+    showAlertToast('Signed out of secure banking session.', true);
+    if (window.iCashAccessibility) {
+      window.iCashAccessibility.announce(
+        'You have been signed out. Returning to login.',
+        'assertive'
+      );
+    }
   }
 }
 
@@ -2236,33 +2440,6 @@ function showAlertToast(msg, isErr = false) {
   toastTimer = setTimeout(() => {
     toast.classList.remove('active');
   }, 4000);
-}
-
-function createScanRingRenderer(canvas) {
-  if (!canvas) return null;
-  const ctx = canvas.getContext('2d');
-  let angle = 0;
-  function draw() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    const cx = canvas.width / 2;
-    const cy = canvas.height / 2;
-    const r = Math.min(cx, cy) - 10;
-
-    ctx.beginPath();
-    ctx.arc(cx, cy, r, angle, angle + Math.PI * 1.3);
-    ctx.strokeStyle = '#2DD4BF';
-    ctx.lineWidth = 3;
-    ctx.shadowBlur = 8;
-    ctx.shadowColor = '#2DD4BF';
-    ctx.stroke();
-
-    angle += 0.05;
-    requestAnimationFrame(draw);
-  }
-  canvas.width = canvas.parentElement.clientWidth || 240;
-  canvas.height = canvas.parentElement.clientHeight || 240;
-  draw();
-  return { canvas };
 }
 
 function initThreeBackground() {
@@ -2317,7 +2494,9 @@ function initThreeBackground() {
     if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       applyMotionPreference(true);
     }
-    window.addEventListener('icash:reduced-motion', (e) => applyMotionPreference(e.detail && e.detail.reduced));
+    window.addEventListener('icash:reduced-motion', (e) =>
+      applyMotionPreference(e.detail && e.detail.reduced)
+    );
   } catch (_) {}
 
   window.addEventListener('resize', () => {

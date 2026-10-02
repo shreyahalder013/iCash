@@ -15,14 +15,22 @@ const API_BASE_CANDIDATES = [
 
 function getConfiguredBaseUrl() {
   if (typeof window !== 'undefined') {
-    if (window.ICASH_CONFIG && typeof window.ICASH_CONFIG.API_BASE_URL === 'string' && window.ICASH_CONFIG.API_BASE_URL.trim()) {
+    if (
+      window.ICASH_CONFIG &&
+      typeof window.ICASH_CONFIG.API_BASE_URL === 'string' &&
+      window.ICASH_CONFIG.API_BASE_URL.trim()
+    ) {
       return window.ICASH_CONFIG.API_BASE_URL.trim().replace(/\/+$/, '');
     }
     const stored = localStorage.getItem('icash_api_url');
     if (stored && stored.trim()) {
       return stored.trim().replace(/\/+$/, '');
     }
-    if (window.__API_BASE__ && typeof window.__API_BASE__ === 'string' && window.__API_BASE__.trim()) {
+    if (
+      window.__API_BASE__ &&
+      typeof window.__API_BASE__ === 'string' &&
+      window.__API_BASE__.trim()
+    ) {
       return window.__API_BASE__.trim().replace(/\/+$/, '');
     }
   }
@@ -46,7 +54,9 @@ let lastProbeFailedAt = 0;
 function fetchWithTimeout(url, options = {}, timeoutMs = PROBE_TIMEOUT_MS) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timeoutId));
+  return fetch(url, { ...options, signal: controller.signal }).finally(() =>
+    clearTimeout(timeoutId)
+  );
 }
 
 async function detectApiBase() {
@@ -57,13 +67,19 @@ async function detectApiBase() {
   if (currentBase !== null && currentBase !== '') {
     // Check if the configured remote server is healthy
     try {
-      const res = await fetchWithTimeout(`${currentBase}/api/health`, { cache: 'no-store' }, PROBE_TIMEOUT_MS);
+      const res = await fetchWithTimeout(
+        `${currentBase}/api/health`,
+        { cache: 'no-store' },
+        PROBE_TIMEOUT_MS
+      );
       if (res.ok) {
         lastProbeFailedAt = 0;
         return currentBase;
       }
     } catch (e) {
-      console.warn(`[iCash API] Configured remote server (${currentBase}) health check failed, checking alternatives...`);
+      console.warn(
+        `[iCash API] Configured remote server (${currentBase}) health check failed, checking alternatives...`
+      );
     }
   }
 
@@ -89,7 +105,11 @@ async function detectApiBase() {
   for (const base of API_BASE_CANDIDATES) {
     if (!base) continue;
     try {
-      const res = await fetchWithTimeout(`${base}/api/health`, { cache: 'no-store' }, PROBE_TIMEOUT_MS);
+      const res = await fetchWithTimeout(
+        `${base}/api/health`,
+        { cache: 'no-store' },
+        PROBE_TIMEOUT_MS
+      );
       if (res.ok) {
         currentBase = base;
         lastProbeFailedAt = 0;
@@ -122,7 +142,8 @@ async function request(endpoint, options = {}) {
   }
   const url = `${base}${endpoint.startsWith('/') ? endpoint : '/' + endpoint}`;
 
-  const activeToken = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('icash_session_token') : null;
+  const activeToken =
+    typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('icash_session_token') : null;
   const isFormData = configBodyIsFormData(options.body);
   const headers = {
     ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
@@ -148,7 +169,11 @@ async function request(endpoint, options = {}) {
   try {
     response = await fetch(url, config);
   } catch (netErr) {
-    const attemptedTarget = base ? base : (typeof window !== 'undefined' ? window.location.origin : 'server');
+    const attemptedTarget = base
+      ? base
+      : typeof window !== 'undefined'
+        ? window.location.origin
+        : 'server';
     throw new Error(
       `Unable to connect to banking backend (${attemptedTarget}). Please ensure the backend server is running and accessible.`
     );
@@ -230,7 +255,8 @@ const api = {
 
   // Email Verification (zahid-afridi/EmailVerfication)
   verifyEmail: (data) => request('/api/auth/verify-email', { method: 'POST', body: data }),
-  resendVerification: (data) => request('/api/auth/resend-verification', { method: 'POST', body: data }),
+  resendVerification: (data) =>
+    request('/api/auth/resend-verification', { method: 'POST', body: data }),
   getVerificationStatus: () => request('/api/auth/verification-status', { method: 'GET' }),
 
   // OTP
@@ -255,26 +281,20 @@ const api = {
   issueChallenge: (data = {}) =>
     request('/api/biometric/challenge', { method: 'POST', body: data }),
 
-  sendBiometricFrame: (data) =>
-    request('/api/biometric/frame', { method: 'POST', body: data }),
+  sendBiometricFrame: (data) => request('/api/biometric/frame', { method: 'POST', body: data }),
 
   verifyChallenge: (data) =>
     request('/api/biometric/verify-challenge', { method: 'POST', body: data }),
 
-  verifyBiometric: (data) =>
-    request('/api/biometric/verify', { method: 'POST', body: data }),
+  verifyBiometric: (data) => request('/api/biometric/verify', { method: 'POST', body: data }),
 
-  enrollBiometric: (data) =>
-    request('/api/biometric/enroll', { method: 'POST', body: data }),
+  enrollBiometric: (data) => request('/api/biometric/enroll', { method: 'POST', body: data }),
 
   // Returns { ok, enrolled, provider } — NEVER returns face_descriptors
-  enrollmentStatus: (userId) =>
-    request(`/api/biometric/profile/${userId}`, { method: 'GET' }),
+  enrollmentStatus: (userId) => request(`/api/biometric/profile/${userId}`, { method: 'GET' }),
 
   // Alias kept for code that referenced getBiometricProfile — returns status only, NOT descriptors
-  getBiometricProfile: (userId) =>
-    request(`/api/biometric/profile/${userId}`, { method: 'GET' }),
-
+  getBiometricProfile: (userId) => request(`/api/biometric/profile/${userId}`, { method: 'GET' }),
 
   // Accounts
   getAccounts: () => request('/api/accounts', { method: 'GET' }),
@@ -377,7 +397,9 @@ const api = {
   listAssistants: () => request('/api/assistants', { method: 'GET' }),
   registerAssistant: (data) => request('/api/assistants/register', { method: 'POST', body: data }),
   getAssistantPermissions: (role) =>
-    request(`/api/assistants/permissions?role=${encodeURIComponent(role || 'TRUSTED_HELPER')}`, { method: 'GET' }),
+    request(`/api/assistants/permissions?role=${encodeURIComponent(role || 'TRUSTED_HELPER')}`, {
+      method: 'GET',
+    }),
   createAssistantDraftTransfer: (data) =>
     request('/api/assistants/draft-transfer', { method: 'POST', body: data }),
   requestEmergencyAssistance: (data = {}) =>
@@ -390,13 +412,16 @@ const api = {
       if (typeof window !== 'undefined' && window.ICASH_CONFIG?.LIVENESS_URL) {
         return window.ICASH_CONFIG.LIVENESS_URL.replace(/\/+$/, '');
       }
-      if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+      if (
+        typeof window !== 'undefined' &&
+        (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+      ) {
         return 'http://127.0.0.1:5001';
       }
       return '';
     },
 
-    start: async function(challengeType) {
+    start: async function (challengeType) {
       try {
         const res = await fetch(`${this.baseUrl}/liveness/start`, {
           method: 'POST',
@@ -408,7 +433,7 @@ const api = {
         return null;
       }
     },
-    sendFrame: async function(sessionId, base64Image, telemetry = {}) {
+    sendFrame: async function (sessionId, base64Image, telemetry = {}) {
       try {
         const body = {
           session_id: sessionId,
@@ -417,8 +442,10 @@ const api = {
         if (telemetry && telemetry.ear !== undefined) body.client_ear = telemetry.ear;
         if (telemetry && telemetry.leftEar !== undefined) body.left_ear = telemetry.leftEar;
         if (telemetry && telemetry.rightEar !== undefined) body.right_ear = telemetry.rightEar;
-        if (telemetry && telemetry.isClosed !== undefined) body.is_closed = Boolean(telemetry.isClosed);
-        if (telemetry && telemetry.blinkCount !== undefined) body.blink_count = telemetry.blinkCount;
+        if (telemetry && telemetry.isClosed !== undefined)
+          body.is_closed = Boolean(telemetry.isClosed);
+        if (telemetry && telemetry.blinkCount !== undefined)
+          body.blink_count = telemetry.blinkCount;
 
         const res = await fetch(`${this.baseUrl}/liveness/frame`, {
           method: 'POST',
@@ -430,7 +457,7 @@ const api = {
         return null;
       }
     },
-    status: async function(sessionId) {
+    status: async function (sessionId) {
       try {
         const res = await fetch(
           `${this.baseUrl}/liveness/status?session_id=${encodeURIComponent(sessionId)}`
@@ -440,7 +467,7 @@ const api = {
         return null;
       }
     },
-    reset: async function(sessionId) {
+    reset: async function (sessionId) {
       try {
         await fetch(`${this.baseUrl}/liveness/reset`, {
           method: 'POST',
@@ -477,7 +504,11 @@ const api = {
     currentBase = getConfiguredBaseUrl();
   },
   getServerUrl: () => {
-    return currentBase || getConfiguredBaseUrl() || (typeof window !== 'undefined' ? window.location.origin : '');
+    return (
+      currentBase ||
+      getConfiguredBaseUrl() ||
+      (typeof window !== 'undefined' ? window.location.origin : '')
+    );
   },
 };
 

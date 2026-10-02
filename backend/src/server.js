@@ -46,9 +46,6 @@ app.use(
           "'unsafe-hashes'",
           "'wasm-unsafe-eval'",
           'https://cdn.jsdelivr.net',
-          'https://*.cloud.appwrite.io',
-          'https://sfo.cloud.appwrite.io',
-          'https://nyc.cloud.appwrite.io',
         ],
         styleSrc: [
           "'self'",
@@ -62,9 +59,6 @@ app.use(
           "'self'",
           'http://localhost:*',
           'http://127.0.0.1:*',
-          'https://*.cloud.appwrite.io',
-          'https://sfo.cloud.appwrite.io',
-          'https://nyc.cloud.appwrite.io',
           'https://cdn.jsdelivr.net',
           'https:',
           'ws:',
@@ -189,6 +183,13 @@ app.use(
 );
 
 app.use(cookieParser());
+// Biometric frame streaming carries a base64 640x480 JPEG inside JSON — real-world
+// frames routinely exceed the default 100kb cap (base64 adds ~33% overhead), and
+// every oversized frame failed with 413 PayloadTooLargeError, so the client loop
+// never progressed past stage 1 and blink login timed out. This route-scoped parser
+// gives /api/biometric/frame a larger cap (matching the Python engine's 2.5MB
+// decode limit) while keeping the strict 100kb default on every other endpoint.
+app.use('/api/biometric/frame', express.json({ limit: '3mb' }));
 app.use(express.json({ limit: '100kb' }));
 app.use(express.urlencoded({ extended: false, limit: '100kb' }));
 app.use(generalApiLimiter);

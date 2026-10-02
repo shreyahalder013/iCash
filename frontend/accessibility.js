@@ -48,7 +48,8 @@
     voiceGuidance: true,
     voiceSpeed: 1.0,
     lastSpokenMessage: '',
-    speechSynth: typeof window !== 'undefined' && 'speechSynthesis' in window ? window.speechSynthesis : null,
+    speechSynth:
+      typeof window !== 'undefined' && 'speechSynthesis' in window ? window.speechSynthesis : null,
 
     init() {
       try {
@@ -64,7 +65,11 @@
 
       // Respect the OS-level reduced-motion preference unless the user chose otherwise
       try {
-        if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches && localStorage.getItem(STORAGE_KEYS.REDUCE_MOTION) === null) {
+        if (
+          window.matchMedia &&
+          window.matchMedia('(prefers-reduced-motion: reduce)').matches &&
+          localStorage.getItem(STORAGE_KEYS.REDUCE_MOTION) === null
+        ) {
           this.isReducedMotion = true;
         }
       } catch (_) {}
@@ -73,7 +78,12 @@
       this.ensureAnnouncer();
       this.bindKeypadEvents();
       this.bindAccessibilityModalSync();
-      console.log('[iCash Accessibility] Initialized. Accessible:', this.isAccessible, 'Senior:', this.isSenior);
+      console.log(
+        '[iCash Accessibility] Initialized. Accessible:',
+        this.isAccessible,
+        'Senior:',
+        this.isSenior
+      );
     },
 
     ensureAnnouncer() {
@@ -84,7 +94,8 @@
         announcer.className = 'sr-only';
         announcer.setAttribute('aria-live', 'polite');
         announcer.setAttribute('aria-atomic', 'true');
-        announcer.style.cssText = 'position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden;';
+        announcer.style.cssText =
+          'position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden;';
         document.body?.appendChild(announcer);
       }
     },
@@ -159,9 +170,11 @@
         this.announce('Nothing to repeat yet.');
         return;
       }
+      // Capture BEFORE unmuteVoice — announcing "Voice feedback on." would
+      // otherwise overwrite lastSpokenMessage and repeat the wrong message.
+      const message = this.lastSpokenMessage;
       if (!this.voiceGuidance) this.unmuteVoice();
       // Speak directly (bypasses announce dedupe) without overwriting lastSpokenMessage
-      const message = this.lastSpokenMessage;
       if (this.speechSynth) {
         try {
           this.speechSynth.cancel();
@@ -184,7 +197,12 @@
       if (typeof rate === 'number' && rate >= 0.5 && rate <= 2) {
         this.voiceSpeed = rate;
       } else {
-        this.voiceSpeed = Math.abs(this.voiceSpeed - 0.85) < 0.01 ? 1.0 : Math.abs(this.voiceSpeed - 1.0) < 0.01 ? 1.2 : 0.85;
+        this.voiceSpeed =
+          Math.abs(this.voiceSpeed - 0.85) < 0.01
+            ? 1.0
+            : Math.abs(this.voiceSpeed - 1.0) < 0.01
+              ? 1.2
+              : 0.85;
       }
       try {
         localStorage.setItem(STORAGE_KEYS.VOICE_SPEED, String(this.voiceSpeed));
@@ -223,7 +241,9 @@
       const onOffBtn = document.getElementById('voice-mode-toggle-btn');
       if (onOffBtn) {
         onOffBtn.setAttribute('aria-pressed', String(this.voiceGuidance));
-        onOffBtn.textContent = this.voiceGuidance ? '\uD83D\uDD18 Assisted Mode ON' : '\u26AA Assisted Mode OFF';
+        onOffBtn.textContent = this.voiceGuidance
+          ? '\uD83D\uDD18 Assisted Mode ON'
+          : '\u26AA Assisted Mode OFF';
         onOffBtn.classList.toggle('active', this.voiceGuidance);
       }
     },
@@ -236,7 +256,9 @@
         this.isLargeText = true;
       }
       this.applyStyles();
-      this.announce(this.isAccessible ? 'Accessible banking mode enabled.' : 'Accessible banking mode disabled.');
+      this.announce(
+        this.isAccessible ? 'Accessible banking mode enabled.' : 'Accessible banking mode disabled.'
+      );
       this.updateTogglesUI();
     },
 
@@ -248,7 +270,9 @@
         this.voiceGuidance = true;
       }
       this.applyStyles();
-      this.announce(this.isSenior ? 'Senior citizen assisted banking mode enabled.' : 'Senior mode disabled.');
+      this.announce(
+        this.isSenior ? 'Senior citizen assisted banking mode enabled.' : 'Senior mode disabled.'
+      );
       this.updateTogglesUI();
     },
 
@@ -256,14 +280,18 @@
       this.isHighContrast = force !== undefined ? Boolean(force) : !this.isHighContrast;
       localStorage.setItem(STORAGE_KEYS.HIGH_CONTRAST, String(this.isHighContrast));
       this.applyStyles();
-      this.announce(this.isHighContrast ? 'High contrast theme enabled.' : 'Standard contrast enabled.');
+      this.announce(
+        this.isHighContrast ? 'High contrast theme enabled.' : 'Standard contrast enabled.'
+      );
     },
 
     toggleLargeText(force) {
       this.isLargeText = force !== undefined ? Boolean(force) : !this.isLargeText;
       localStorage.setItem(STORAGE_KEYS.LARGE_TEXT, String(this.isLargeText));
       this.applyStyles();
-      this.announce(this.isLargeText ? 'Large typography enabled.' : 'Standard text size restored.');
+      this.announce(
+        this.isLargeText ? 'Large typography enabled.' : 'Standard text size restored.'
+      );
     },
 
     toggleReduceMotion(force) {
@@ -273,7 +301,9 @@
       this.announce(this.isReducedMotion ? 'Reduced motion enabled.' : 'Animations restored.');
       // Let the Three.js background engine pause itself when reduced motion is on
       try {
-        window.dispatchEvent(new CustomEvent('icash:reduced-motion', { detail: { reduced: this.isReducedMotion } }));
+        window.dispatchEvent(
+          new CustomEvent('icash:reduced-motion', { detail: { reduced: this.isReducedMotion } })
+        );
       } catch (_) {}
     },
 
@@ -327,6 +357,27 @@
       if (voiceBtn) {
         voiceBtn.setAttribute('aria-pressed', String(this.voiceGuidance));
         voiceBtn.classList.toggle('active', this.voiceGuidance);
+        // Home-page Voice Guided Mode toggle shows the actual state in text —
+        // never color alone (Phase 9).
+        voiceBtn.textContent = this.voiceGuidance ? '\uD83D\uDD0A ON' : '\u26AA OFF';
+        const helpText = document.getElementById('voice-mode-help-text');
+        if (helpText) {
+          helpText.textContent = this.voiceGuidance
+            ? 'Spoken guidance for every authentication step.'
+            : 'Voice guidance is off. Visual instructions remain available.';
+        }
+      }
+      // Login-scan top control: reflects the same global Voice Guided Mode
+      // setting (toggled by the user from the login screen control row).
+      const loginVoiceBtn = document.getElementById('login-voice-btn');
+      if (loginVoiceBtn) {
+        loginVoiceBtn.setAttribute('aria-pressed', String(this.voiceGuidance));
+        loginVoiceBtn.classList.toggle('active', this.voiceGuidance);
+        loginVoiceBtn.title = this.voiceGuidance
+          ? 'Voice Guided Mode is ON — each verification step is read aloud'
+          : 'Voice Guided Mode is OFF — select to enable spoken guidance';
+        const loginVoiceState = document.getElementById('login-voice-state');
+        if (loginVoiceState) loginVoiceState.textContent = this.voiceGuidance ? 'ON' : 'OFF';
       }
       // Keep the Accessibility Options modal checkboxes in sync with live state
       const hc = document.getElementById('acc-high-contrast');
@@ -374,7 +425,9 @@
       } else {
         if (this.currentKeypadTarget.value.length < 4) {
           this.currentKeypadTarget.value += val;
-          this.announce(`Digit ${val} entered. ${this.currentKeypadTarget.value.length} of 4 digits.`);
+          this.announce(
+            `Digit ${val} entered. ${this.currentKeypadTarget.value.length} of 4 digits.`
+          );
         }
       }
 
@@ -410,7 +463,13 @@
     },
 
     // ── Accessible Transaction Confirmation Modal (Phase 18) ──────────────────
-    confirmAccessibleTransaction({ type = 'Transfer', amount, recipientName, recipientAccount, onConfirm }) {
+    confirmAccessibleTransaction({
+      type = 'Transfer',
+      amount,
+      recipientName,
+      recipientAccount,
+      onConfirm,
+    }) {
       const modal = document.getElementById('modal-accessible-confirm');
       if (!modal) {
         if (typeof onConfirm === 'function') onConfirm();
@@ -435,7 +494,9 @@
         };
         // Keyboard users land on Confirm; Enter/Space activates, Tab reaches Cancel
         setTimeout(() => {
-          try { actionBtn.focus(); } catch (_) {}
+          try {
+            actionBtn.focus();
+          } catch (_) {}
         }, 80);
       }
 
@@ -464,10 +525,17 @@
   window.toggleVoiceGuidance = (force) => AccessibilityManager.toggleVoiceGuidance(force);
   window.muteVoice = () => AccessibilityManager.muteVoice();
   window.unmuteVoice = () => AccessibilityManager.unmuteVoice();
-  window.toggleMuteVoice = () => (AccessibilityManager.voiceGuidance ? AccessibilityManager.muteVoice() : AccessibilityManager.unmuteVoice());
+  window.toggleMuteVoice = () =>
+    AccessibilityManager.voiceGuidance
+      ? AccessibilityManager.muteVoice()
+      : AccessibilityManager.unmuteVoice();
   window.repeatLast = () => AccessibilityManager.repeatLast();
   window.stopSpeaking = () => AccessibilityManager.stopSpeaking();
   window.setVoiceSpeed = (rate) => AccessibilityManager.setVoiceSpeed(rate);
+  // The accessible transaction-confirmation modal invokes this inline
+  // (Cancel button) — without the window binding the click throws and the
+  // modal can never be dismissed.
+  window.closeAccessibleConfirm = () => AccessibilityManager.closeAccessibleConfirm();
 
   document.addEventListener('DOMContentLoaded', () => AccessibilityManager.init());
 })();

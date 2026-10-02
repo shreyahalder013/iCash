@@ -319,27 +319,34 @@ describe('Biometric Security & Anti-Spoofing Subsystem', () => {
   });
 
   // ── 12. Challenge Type Randomization ─────────────────────────────────────────
-  test('POST /api/biometric/challenge - Randomizes across all 5 challenge types', async () => {
-    const challengeTypes = new Set();
-    // Request multiple challenges to verify randomization
-    for (let i = 0; i < 20; i++) {
-      const res = await request(app)
-        .post('/api/biometric/challenge')
-        .send({ userIdHint: testUser.id });
-      expect(res.status).toBe(200);
-      expect(res.body.ok).toBe(true);
-      challengeTypes.add(res.body.challengeType);
-    }
-    // Should have seen at least 3 different challenge types (probabilistic)
-    expect(challengeTypes.size).toBeGreaterThanOrEqual(3);
-    expect([...challengeTypes].every(t => [
-      'BLINK_TWICE',
-      'BLINK_PAUSE_BLINK',
-      'BLINK_TURN_LEFT_BLINK',
-      'BLINK_TURN_RIGHT_BLINK',
-      'BLINK_TWICE_WITH_RANDOM_INTERVAL',
-    ].includes(t))).toBe(true);
-  });
+  // 20 sequential challenge requests against a remote database (WAN latency
+  // ~2-3s per request) can legitimately exceed the default 60s test timeout —
+  // this is infrastructure latency, not a logic failure.
+  test(
+    'POST /api/biometric/challenge - Randomizes across all 5 challenge types',
+    async () => {
+      const challengeTypes = new Set();
+      // Request multiple challenges to verify randomization
+      for (let i = 0; i < 20; i++) {
+        const res = await request(app)
+          .post('/api/biometric/challenge')
+          .send({ userIdHint: testUser.id });
+        expect(res.status).toBe(200);
+        expect(res.body.ok).toBe(true);
+        challengeTypes.add(res.body.challengeType);
+      }
+      // Should have seen at least 3 different challenge types (probabilistic)
+      expect(challengeTypes.size).toBeGreaterThanOrEqual(3);
+      expect([...challengeTypes].every(t => [
+        'BLINK_TWICE',
+        'BLINK_PAUSE_BLINK',
+        'BLINK_TURN_LEFT_BLINK',
+        'BLINK_TURN_RIGHT_BLINK',
+        'BLINK_TWICE_WITH_RANDOM_INTERVAL',
+      ].includes(t))).toBe(true);
+    },
+    180000
+  );
 
   // ── 13. Challenge Type: BLINK_PAUSE_BLINK Specifics ──────────────────────────
   test('Challenge BLINK_PAUSE_BLINK - Requires pause between blinks', async () => {

@@ -30,6 +30,9 @@
       if (!SpeechRecognition) {
         console.warn('[iCash Voice] Web Speech Recognition is not supported by this browser.');
         this.updateMicBtn(false);
+        // Do not construct the recognizer — it would throw on browsers without
+        // the Web Speech API and break the DOMContentLoaded init chain.
+        return;
       }
 
       // Keyboard activation for voice command chips (role="button", tabindex=0)
@@ -55,7 +58,9 @@
       this.recognition.onstart = () => {
         this.isListening = true;
         this.updateMicBtn(true);
-        this.showVoiceOverlay('Listening... Speak a command (e.g. "Show balance", "Transfer money", "Help")');
+        this.showVoiceOverlay(
+          'Listening... Speak a command (e.g. "Show balance", "Transfer money", "Help")'
+        );
       };
 
       this.recognition.onresult = (event) => {
@@ -81,7 +86,9 @@
     toggleListening() {
       if (!this.recognition) {
         if (window.iCashAccessibility) {
-          window.iCashAccessibility.announce('Voice recognition is not supported in this browser. Please use keyboard or touch.');
+          window.iCashAccessibility.announce(
+            'Voice recognition is not supported in this browser. Please use keyboard or touch.'
+          );
         }
         return;
       }
@@ -197,10 +204,35 @@
 
       // 2. English word numbers: "two thousand", "five hundred"
       const WORD_NUMBERS = {
-        one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
-        eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17,
-        eighteen: 18, nineteen: 19, twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60,
-        seventy: 70, eighty: 80, ninety: 90, hundred: 100, thousand: 1000,
+        one: 1,
+        two: 2,
+        three: 3,
+        four: 4,
+        five: 5,
+        six: 6,
+        seven: 7,
+        eight: 8,
+        nine: 9,
+        ten: 10,
+        eleven: 11,
+        twelve: 12,
+        thirteen: 13,
+        fourteen: 14,
+        fifteen: 15,
+        sixteen: 16,
+        seventeen: 17,
+        eighteen: 18,
+        nineteen: 19,
+        twenty: 20,
+        thirty: 30,
+        forty: 40,
+        fifty: 50,
+        sixty: 60,
+        seventy: 70,
+        eighty: 80,
+        ninety: 90,
+        hundred: 100,
+        thousand: 1000,
       };
       const words = cmd.split(/\s+/);
       let total = 0;
@@ -243,27 +275,45 @@
       };
 
       // 1. Balance — ALWAYS uses real authenticated banking data, never invented figures
-      if (cmd.includes('balance') || cmd.includes('how much money') || cmd.includes('how much do i have') || cmd.includes("what's my balance") || cmd.includes('account balance') || cmd.includes('my money')) {
+      if (
+        cmd.includes('balance') ||
+        cmd.includes('how much money') ||
+        cmd.includes('how much do i have') ||
+        cmd.includes("what's my balance") ||
+        cmd.includes('account balance') ||
+        cmd.includes('my money')
+      ) {
         if (typeof switchView === 'function') switchView('dashboard');
         speak('Reading your account balance…');
         try {
           const primaryAcc = await this.resolvePrimaryAccount();
           if (!primaryAcc || primaryAcc.balance === undefined || primaryAcc.balance === null) {
             // NEVER invent a balance — direct the user to the visual display
-            speak("I couldn't read your balance right now. Please check the balance card on your dashboard.");
+            speak(
+              "I couldn't read your balance right now. Please check the balance card on your dashboard."
+            );
             return;
           }
           const bal = Number(primaryAcc.balance).toLocaleString('en-IN');
           const bank = primaryAcc.bankName ? ` in your ${primaryAcc.bankName} account` : '';
           speak(`Your current balance is ₹${bal} rupees${bank}.`);
         } catch (_) {
-          speak("I couldn't read your balance right now. Please check the balance card on your dashboard.");
+          speak(
+            "I couldn't read your balance right now. Please check the balance card on your dashboard."
+          );
         }
         return;
       }
 
       // 2. Transactions
-      if (cmd.includes('transaction') || cmd.includes('statement') || cmd.includes('history') || cmd.includes('passbook') || cmd.includes('spend recently') || cmd.includes('spent recently')) {
+      if (
+        cmd.includes('transaction') ||
+        cmd.includes('statement') ||
+        cmd.includes('history') ||
+        cmd.includes('passbook') ||
+        cmd.includes('spend recently') ||
+        cmd.includes('spent recently')
+      ) {
         if (typeof switchView === 'function') switchView('transactions');
         speak('Opening your transaction ledger.');
         return;
@@ -295,7 +345,10 @@
         if (recipInput) recipInput.value = recipient;
 
         // Trigger accessible confirmation modal (visual equivalent of the voice readback)
-        if (window.iCashAccessibility && typeof window.iCashAccessibility.confirmAccessibleTransaction === 'function') {
+        if (
+          window.iCashAccessibility &&
+          typeof window.iCashAccessibility.confirmAccessibleTransaction === 'function'
+        ) {
           window.iCashAccessibility.confirmAccessibleTransaction({
             type: 'Transfer',
             amount,
@@ -309,7 +362,9 @@
             },
           });
         } else {
-          speak(`Draft transfer of ₹${amount} created for ${recipient}. Please review and confirm — you will need to complete biometric verification.`);
+          speak(
+            `Draft transfer of ₹${amount} created for ${recipient}. Please review and confirm — you will need to complete biometric verification.`
+          );
         }
         return;
       }
@@ -325,7 +380,10 @@
           document.getElementById('screen-dashboard') &&
           document.getElementById('screen-dashboard').classList.contains('active')
         ) {
-          if (document.getElementById('view-dashboard') && !document.getElementById('view-dashboard').classList.contains('active')) {
+          if (
+            document.getElementById('view-dashboard') &&
+            !document.getElementById('view-dashboard').classList.contains('active')
+          ) {
             switchView('dashboard');
             speak('Returning to your dashboard.');
           } else {
@@ -358,13 +416,18 @@
           const input = document.getElementById('withdraw-amt');
           if (input && amount) input.value = amount;
           if (typeof openModal === 'function') openModal('withdraw');
-          speak(amount
-            ? `You requested a withdrawal of ₹${Number(amount).toLocaleString('en-IN')}. The draft is ready. Review it and select Proceed to Biometric Authorization.`
-            : 'Cash withdrawal draft is ready. Enter an amount, then select Proceed to Biometric Authorization.');
+          speak(
+            amount
+              ? `You requested a withdrawal of ₹${Number(amount).toLocaleString('en-IN')}. The draft is ready. Review it and select Proceed to Biometric Authorization.`
+              : 'Cash withdrawal draft is ready. Enter an amount, then select Proceed to Biometric Authorization.'
+          );
         };
         if (amount && window.iCashAccessibility?.confirmAccessibleTransaction) {
           window.iCashAccessibility.confirmAccessibleTransaction({
-            type: 'Withdrawal', amount, recipientName: 'your primary account', onConfirm: openWithdrawalDraft,
+            type: 'Withdrawal',
+            amount,
+            recipientName: 'your primary account',
+            onConfirm: openWithdrawalDraft,
           });
         } else {
           openWithdrawalDraft();
@@ -373,20 +436,32 @@
       }
 
       // 9. Help & Grievances
-      if (cmd.includes('help') || cmd.includes('support') || cmd.includes('complaint') || cmd.includes('assistance')) {
+      if (
+        cmd.includes('help') ||
+        cmd.includes('support') ||
+        cmd.includes('complaint') ||
+        cmd.includes('assistance')
+      ) {
         if (typeof switchView === 'function') switchView('support');
         speak('Opening customer support and grievance redressal portal.');
         return;
       }
 
       // 10. Logout
-      if (cmd.includes('logout') || cmd.includes('log out') || cmd.includes('sign out') || cmd.includes('exit')) {
+      if (
+        cmd.includes('logout') ||
+        cmd.includes('log out') ||
+        cmd.includes('sign out') ||
+        cmd.includes('exit')
+      ) {
         speak('Logging you out safely.');
         if (typeof logout === 'function') logout();
         return;
       }
 
-      speak(`Command not recognized: "${cmd}". You can say: Check my balance, Show recent transactions, Withdraw 2000 rupees, Transfer money, Go back, or Logout.`);
+      speak(
+        `Command not recognized: "${cmd}". You can say: Check my balance, Show recent transactions, Withdraw 2000 rupees, Transfer money, Go back, or Logout.`
+      );
     },
   };
 

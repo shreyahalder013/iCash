@@ -165,7 +165,9 @@
   // Re-scan for menus added later (e.g. screens rendered dynamically)
   if (typeof MutationObserver !== 'undefined') {
     const observer = new MutationObserver(() => {
-      document.querySelectorAll('.assist-overflow:not([data-assist-init="true"])').forEach(initEntry);
+      document
+        .querySelectorAll('.assist-overflow:not([data-assist-init="true"])')
+        .forEach(initEntry);
     });
     document.addEventListener('DOMContentLoaded', () => {
       observer.observe(document.body, { childList: true, subtree: true });
@@ -182,7 +184,9 @@
       closeAllMenus({ returnFocus: false });
       return;
     }
-    const entry = (document.activeElement && entryFromEventTarget(document.activeElement)) || entries.find((e) => e.open);
+    const entry =
+      (document.activeElement && entryFromEventTarget(document.activeElement)) ||
+      entries.find((e) => e.open);
     toggleEntry(entry);
   };
   window.closeAssistMenu = function () {
