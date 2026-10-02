@@ -27,7 +27,9 @@ async function analytics(req, res, next) {
         customerRetention: 0,
       },
     });
-  } catch (err) { next(err); }
+  } catch (err) {
+    next(err);
+  }
 }
 
 module.exports = { analytics, dashboard: analytics };

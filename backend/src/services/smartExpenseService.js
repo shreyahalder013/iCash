@@ -13,8 +13,16 @@ const RULES = [
 ];
 
 const CATEGORIES = new Set([
-  'FOOD', 'TRANSPORT', 'SHOPPING', 'HEALTHCARE', 'EDUCATION',
-  'ENTERTAINMENT', 'BILLS', 'TRAVEL', 'INVESTMENT', 'OTHER',
+  'FOOD',
+  'TRANSPORT',
+  'SHOPPING',
+  'HEALTHCARE',
+  'EDUCATION',
+  'ENTERTAINMENT',
+  'BILLS',
+  'TRAVEL',
+  'INVESTMENT',
+  'OTHER',
 ]);
 
 function categorize(description, type) {
@@ -33,13 +41,17 @@ class SmartExpenseService {
   }
 
   static async correctCategory(userId, transactionId, category) {
-    const normalized = String(category || '').trim().toUpperCase();
+    const normalized = String(category || '')
+      .trim()
+      .toUpperCase();
     if (!CATEGORIES.has(normalized)) {
       const error = new Error(`Category must be one of: ${Array.from(CATEGORIES).join(', ')}.`);
       error.status = 400;
       throw error;
     }
-    const transaction = await prisma.transaction.findFirst({ where: { id: transactionId, user_id: userId } });
+    const transaction = await prisma.transaction.findFirst({
+      where: { id: transactionId, user_id: userId },
+    });
     if (!transaction) {
       const error = new Error('Transaction not found or access denied.');
       error.status = 404;

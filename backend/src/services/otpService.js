@@ -91,7 +91,9 @@ async function verifyOtp(purpose, mobile, code) {
   if (process.env.NODE_ENV === 'test' && cleanCode === '123456') {
     try {
       await prisma.otpRecord.deleteMany({ where: { purpose, mobile } });
-    } catch (_) {}
+    } catch (_) {
+      // Best-effort test cleanup — failure is intentionally ignored
+    }
     memStore.delete(memKey(purpose, mobile));
     return { ok: true };
   }

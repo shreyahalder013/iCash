@@ -19,7 +19,7 @@ describe('Temporal Blink Liveness Engine (Anti-Spoofing)', () => {
     totalFrames = 30,
     intervalMs = 80,
     blinkCount = 2,
-    baselineEAR = 0.30,
+    baselineEAR = 0.3,
     closedEAR = 0.12,
   }) {
     const frames = [];
@@ -119,7 +119,7 @@ describe('Temporal Blink Liveness Engine (Anti-Spoofing)', () => {
       staringFrames.push({
         timestamp: time,
         leftEAR: 0.29 + Math.sin(i) * 0.005,
-        rightEAR: 0.30 + Math.cos(i) * 0.005,
+        rightEAR: 0.3 + Math.cos(i) * 0.005,
         state: 'OPEN',
       });
       time += 80;
@@ -174,8 +174,8 @@ describe('Temporal Blink Liveness Engine (Anti-Spoofing)', () => {
     for (let i = 0; i < 20; i++) {
       closedEyePhoto.push({
         timestamp: time,
-        leftEAR: 0.10 + (Math.random() * 0.005),
-        rightEAR: 0.10 + (Math.random() * 0.005),
+        leftEAR: 0.1 + Math.random() * 0.005,
+        rightEAR: 0.1 + Math.random() * 0.005,
         state: 'CLOSED',
       });
       time += 80; // 1600ms closed
@@ -188,7 +188,13 @@ describe('Temporal Blink Liveness Engine (Anti-Spoofing)', () => {
 
 describe('Challenge Type Specific Validation', () => {
   // Helper to generate realistic EAR frame sequences
-  function generateBlinkSequence({ totalFrames = 30, intervalMs = 80, blinkCount = 2, baselineEAR = 0.30, closedEAR = 0.12 }) {
+  function generateBlinkSequence({
+    totalFrames = 30,
+    intervalMs = 80,
+    blinkCount = 2,
+    baselineEAR = 0.3,
+    closedEAR = 0.12,
+  }) {
     const frames = [];
     let currentTime = 100000;
 
@@ -249,7 +255,13 @@ describe('Challenge Type Specific Validation', () => {
     return frames;
   }
 
-  function generateBlinkSequenceWithPause({ totalFrames = 40, intervalMs = 80, baselineEAR = 0.30, closedEAR = 0.12, pauseMs = 900 }) {
+  function generateBlinkSequenceWithPause({
+    totalFrames = 40,
+    intervalMs = 80,
+    baselineEAR = 0.3,
+    closedEAR = 0.12,
+    pauseMs = 900,
+  }) {
     const frames = [];
     let currentTime = 100000;
 
@@ -268,7 +280,12 @@ describe('Challenge Type Specific Validation', () => {
     frames.push({ timestamp: currentTime, leftEAR: 0.22, rightEAR: 0.22, state: 'CLOSING' });
     currentTime += intervalMs;
     for (let c = 0; c < 2; c++) {
-      frames.push({ timestamp: currentTime, leftEAR: closedEAR + (Math.random() * 0.02 - 0.01), rightEAR: closedEAR + (Math.random() * 0.02 - 0.01), state: 'CLOSED' });
+      frames.push({
+        timestamp: currentTime,
+        leftEAR: closedEAR + (Math.random() * 0.02 - 0.01),
+        rightEAR: closedEAR + (Math.random() * 0.02 - 0.01),
+        state: 'CLOSED',
+      });
       currentTime += intervalMs;
     }
     frames.push({ timestamp: currentTime, leftEAR: 0.24, rightEAR: 0.24, state: 'OPENING' });
@@ -290,7 +307,12 @@ describe('Challenge Type Specific Validation', () => {
     frames.push({ timestamp: currentTime, leftEAR: 0.22, rightEAR: 0.22, state: 'CLOSING' });
     currentTime += intervalMs;
     for (let c = 0; c < 2; c++) {
-      frames.push({ timestamp: currentTime, leftEAR: closedEAR + (Math.random() * 0.02 - 0.01), rightEAR: closedEAR + (Math.random() * 0.02 - 0.01), state: 'CLOSED' });
+      frames.push({
+        timestamp: currentTime,
+        leftEAR: closedEAR + (Math.random() * 0.02 - 0.01),
+        rightEAR: closedEAR + (Math.random() * 0.02 - 0.01),
+        state: 'CLOSED',
+      });
       currentTime += intervalMs;
     }
     frames.push({ timestamp: currentTime, leftEAR: 0.24, rightEAR: 0.24, state: 'OPENING' });
@@ -310,7 +332,13 @@ describe('Challenge Type Specific Validation', () => {
     return frames;
   }
 
-  function generateBlinkSequenceWithTurn({ totalFrames = 50, intervalMs = 80, baselineEAR = 0.30, closedEAR = 0.12, yawSequence = [] }) {
+  function generateBlinkSequenceWithTurn({
+    totalFrames = 50,
+    intervalMs = 80,
+    baselineEAR = 0.3,
+    closedEAR = 0.12,
+    yawSequence = [],
+  }) {
     const frames = [];
     let currentTime = 100000;
     let yawIndex = 0;
@@ -329,14 +357,35 @@ describe('Challenge Type Specific Validation', () => {
     }
 
     // First blink
-    frames.push({ timestamp: currentTime, leftEAR: 0.22, rightEAR: 0.22, state: 'CLOSING', yaw: yawSequence[yawIndex] !== undefined ? yawSequence[yawIndex] : 0 });
-    currentTime += intervalMs; yawIndex++;
+    frames.push({
+      timestamp: currentTime,
+      leftEAR: 0.22,
+      rightEAR: 0.22,
+      state: 'CLOSING',
+      yaw: yawSequence[yawIndex] !== undefined ? yawSequence[yawIndex] : 0,
+    });
+    currentTime += intervalMs;
+    yawIndex++;
     for (let c = 0; c < 2; c++) {
-      frames.push({ timestamp: currentTime, leftEAR: closedEAR + (Math.random() * 0.02 - 0.01), rightEAR: closedEAR + (Math.random() * 0.02 - 0.01), state: 'CLOSED', yaw: yawSequence[yawIndex] !== undefined ? yawSequence[yawIndex] : 0 });
-      currentTime += intervalMs; yawIndex++;
+      frames.push({
+        timestamp: currentTime,
+        leftEAR: closedEAR + (Math.random() * 0.02 - 0.01),
+        rightEAR: closedEAR + (Math.random() * 0.02 - 0.01),
+        state: 'CLOSED',
+        yaw: yawSequence[yawIndex] !== undefined ? yawSequence[yawIndex] : 0,
+      });
+      currentTime += intervalMs;
+      yawIndex++;
     }
-    frames.push({ timestamp: currentTime, leftEAR: 0.24, rightEAR: 0.24, state: 'OPENING', yaw: yawSequence[yawIndex] !== undefined ? yawSequence[yawIndex] : 0 });
-    currentTime += intervalMs; yawIndex++;
+    frames.push({
+      timestamp: currentTime,
+      leftEAR: 0.24,
+      rightEAR: 0.24,
+      state: 'OPENING',
+      yaw: yawSequence[yawIndex] !== undefined ? yawSequence[yawIndex] : 0,
+    });
+    currentTime += intervalMs;
+    yawIndex++;
 
     // Turn frames
     for (let o = 0; o < 8; o++) {
@@ -347,7 +396,8 @@ describe('Challenge Type Specific Validation', () => {
         state: 'OPEN',
         yaw: yawSequence[yawIndex] !== undefined ? yawSequence[yawIndex] : 0,
       });
-      currentTime += intervalMs; yawIndex++;
+      currentTime += intervalMs;
+      yawIndex++;
     }
 
     // Return to center frames
@@ -359,18 +409,40 @@ describe('Challenge Type Specific Validation', () => {
         state: 'OPEN',
         yaw: yawSequence[yawIndex] !== undefined ? yawSequence[yawIndex] : 0,
       });
-      currentTime += intervalMs; yawIndex++;
+      currentTime += intervalMs;
+      yawIndex++;
     }
 
     // Second blink
-    frames.push({ timestamp: currentTime, leftEAR: 0.22, rightEAR: 0.22, state: 'CLOSING', yaw: yawSequence[yawIndex] !== undefined ? yawSequence[yawIndex] : 0 });
-    currentTime += intervalMs; yawIndex++;
+    frames.push({
+      timestamp: currentTime,
+      leftEAR: 0.22,
+      rightEAR: 0.22,
+      state: 'CLOSING',
+      yaw: yawSequence[yawIndex] !== undefined ? yawSequence[yawIndex] : 0,
+    });
+    currentTime += intervalMs;
+    yawIndex++;
     for (let c = 0; c < 2; c++) {
-      frames.push({ timestamp: currentTime, leftEAR: closedEAR + (Math.random() * 0.02 - 0.01), rightEAR: closedEAR + (Math.random() * 0.02 - 0.01), state: 'CLOSED', yaw: yawSequence[yawIndex] !== undefined ? yawSequence[yawIndex] : 0 });
-      currentTime += intervalMs; yawIndex++;
+      frames.push({
+        timestamp: currentTime,
+        leftEAR: closedEAR + (Math.random() * 0.02 - 0.01),
+        rightEAR: closedEAR + (Math.random() * 0.02 - 0.01),
+        state: 'CLOSED',
+        yaw: yawSequence[yawIndex] !== undefined ? yawSequence[yawIndex] : 0,
+      });
+      currentTime += intervalMs;
+      yawIndex++;
     }
-    frames.push({ timestamp: currentTime, leftEAR: 0.24, rightEAR: 0.24, state: 'OPENING', yaw: yawSequence[yawIndex] !== undefined ? yawSequence[yawIndex] : 0 });
-    currentTime += intervalMs; yawIndex++;
+    frames.push({
+      timestamp: currentTime,
+      leftEAR: 0.24,
+      rightEAR: 0.24,
+      state: 'OPENING',
+      yaw: yawSequence[yawIndex] !== undefined ? yawSequence[yawIndex] : 0,
+    });
+    currentTime += intervalMs;
+    yawIndex++;
 
     // Final open frames
     for (let o = 0; o < 5; o++) {
@@ -403,12 +475,41 @@ describe('Challenge Type Specific Validation', () => {
   test('passes BLINK_TURN_LEFT_BLINK with proper left turn (yaw < -12°)', () => {
     // Yaw sequence: center -> left turn (-15°) -> center -> second blink
     const yawSequence = [
-      0, 0, 0, 0, 0, 0,  // initial open frames
-      0, -5, -10, -12, -15, -15, -15,  // blink + turn
-      -15, -15, -15, -15, -15, -15, -15, -15,  // holding turn
-      -5, 0, 0, 0, 0, 0,  // return to center
-      0, 0, 0,  // second blink
-      0, 0, 0, 0, 0  // final
+      0,
+      0,
+      0,
+      0,
+      0,
+      0, // initial open frames
+      0,
+      -5,
+      -10,
+      -12,
+      -15,
+      -15,
+      -15, // blink + turn
+      -15,
+      -15,
+      -15,
+      -15,
+      -15,
+      -15,
+      -15,
+      -15, // holding turn
+      -5,
+      0,
+      0,
+      0,
+      0,
+      0, // return to center
+      0,
+      0,
+      0, // second blink
+      0,
+      0,
+      0,
+      0,
+      0, // final
     ];
     const frames = generateBlinkSequenceWithTurn({ yawSequence });
     const result = validateTemporalLiveness(frames, 'BLINK_TURN_LEFT_BLINK');
@@ -425,12 +526,8 @@ describe('Challenge Type Specific Validation', () => {
 
   test('passes BLINK_TURN_RIGHT_BLINK with proper right turn (yaw > 12°)', () => {
     const yawSequence = [
-      0, 0, 0, 0, 0, 0,
-      0, 5, 10, 12, 15, 15, 15,
-      15, 15, 15, 15, 15, 15, 15, 15,
-      5, 0, 0, 0, 0, 0,
-      0, 0, 0,
-      0, 0, 0, 0, 0
+      0, 0, 0, 0, 0, 0, 0, 5, 10, 12, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 5, 0, 0, 0, 0, 0,
+      0, 0, 0, 0, 0, 0, 0, 0,
     ];
     const frames = generateBlinkSequenceWithTurn({ yawSequence });
     const result = validateTemporalLiveness(frames, 'BLINK_TURN_RIGHT_BLINK');

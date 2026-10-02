@@ -7,8 +7,12 @@ const crypto = require('crypto');
 function parseReceiptText(text) {
   const totalMatch = text.match(/(?:total|amount payable|grand total)[^\d]*(\d+(?:[.,]\d{1,2})?)/i);
   const taxMatch = text.match(/(?:tax|gst|vat)[^\d]*(\d+(?:[.,]\d{1,2})?)/i);
-  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  const items = lines.slice(1)
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const items = lines
+    .slice(1)
     .map((line) => {
       const match = line.match(/^(.*?)(?:\s+|₹)\s*(\d+(?:[.,]\d{1,2})?)$/);
       if (!match || /total|tax|gst|vat|amount payable/i.test(match[1])) return null;

@@ -35,7 +35,9 @@ class AccountService {
     const { bankName, accountType = 'SAVINGS', initialBalance = 0, isPrimary = false } = data;
 
     if (Number(initialBalance) !== 0) {
-      const err = new Error('New accounts must be funded through a verified deposit or payment workflow.');
+      const err = new Error(
+        'New accounts must be funded through a verified deposit or payment workflow.'
+      );
       err.status = 400;
       throw err;
     }

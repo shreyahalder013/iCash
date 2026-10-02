@@ -65,9 +65,16 @@ describe('Security Events & Biometrics APIs', () => {
 
   test('POST /api/biometric/enroll & /verify - Server-side facial verification with valid token', async () => {
     const jwt = require('jsonwebtoken');
-    const bioSecret = (process.env.JWT_SECRET || 'icash-insecure-secret-key-change-in-prod') + ':biometric-challenge-token-v1';
+    const bioSecret =
+      (process.env.JWT_SECRET || 'icash-insecure-secret-key-change-in-prod') +
+      ':biometric-challenge-token-v1';
     const validBioToken = jwt.sign(
-      { sub: regularUser.id, challengeId: 'test-challenge', purpose: 'biometric-auth', livenessOk: true },
+      {
+        sub: regularUser.id,
+        challengeId: 'test-challenge',
+        purpose: 'biometric-auth',
+        livenessOk: true,
+      },
       bioSecret,
       { expiresIn: 180 }
     );
@@ -102,9 +109,7 @@ describe('Security Events & Biometrics APIs', () => {
 
   test('POST /api/biometric/challenge & verify-challenge flow', async () => {
     // 1. Issue challenge
-    const challengeRes = await request(app)
-      .post('/api/biometric/challenge')
-      .send({});
+    const challengeRes = await request(app).post('/api/biometric/challenge').send({});
 
     expect(challengeRes.status).toBe(200);
     expect(challengeRes.body.ok).toBe(true);
@@ -114,14 +119,12 @@ describe('Security Events & Biometrics APIs', () => {
 
     // 2. Reject verification if proof or face matching fails
     const mockVector = Array.from({ length: 128 }, (_, i) => Math.sin(i));
-    const badVerifyRes = await request(app)
-      .post('/api/biometric/verify-challenge')
-      .send({
-        challengeId: challengeRes.body.challengeId,
-        nonce: challengeRes.body.nonce,
-        liveDescriptor: mockVector,
-        // Missing proof frames and no liveness server -> will reject liveness with 403 Forbidden
-      });
+    const badVerifyRes = await request(app).post('/api/biometric/verify-challenge').send({
+      challengeId: challengeRes.body.challengeId,
+      nonce: challengeRes.body.nonce,
+      liveDescriptor: mockVector,
+      // Missing proof frames and no liveness server -> will reject liveness with 403 Forbidden
+    });
 
     expect(badVerifyRes.status).toBe(403);
     expect(badVerifyRes.body.ok).toBe(false);
@@ -135,33 +138,31 @@ describe('Security Events & Biometrics APIs', () => {
     const validProof = [];
     let t = 100000;
     for (let i = 0; i < 6; i++) {
-      validProof.push({ timestamp: t, leftEAR: 0.30, rightEAR: 0.30, state: 'OPEN' });
+      validProof.push({ timestamp: t, leftEAR: 0.3, rightEAR: 0.3, state: 'OPEN' });
       t += 100;
     }
     // Blink 1
     validProof.push({ timestamp: t, leftEAR: 0.12, rightEAR: 0.12, state: 'CLOSED' });
     t += 160;
-    validProof.push({ timestamp: t, leftEAR: 0.30, rightEAR: 0.30, state: 'OPEN' });
+    validProof.push({ timestamp: t, leftEAR: 0.3, rightEAR: 0.3, state: 'OPEN' });
     t += 350; // debounce gap > 250ms
     // Blink 2
     validProof.push({ timestamp: t, leftEAR: 0.12, rightEAR: 0.12, state: 'CLOSED' });
     t += 160;
-    validProof.push({ timestamp: t, leftEAR: 0.30, rightEAR: 0.30, state: 'OPEN' });
+    validProof.push({ timestamp: t, leftEAR: 0.3, rightEAR: 0.3, state: 'OPEN' });
     t += 100;
     for (let i = 0; i < 5; i++) {
-      validProof.push({ timestamp: t, leftEAR: 0.30, rightEAR: 0.30, state: 'OPEN' });
+      validProof.push({ timestamp: t, leftEAR: 0.3, rightEAR: 0.3, state: 'OPEN' });
       t += 100;
     }
 
-    const goodVerifyRes = await request(app)
-      .post('/api/biometric/verify-challenge')
-      .send({
-        challengeId: goodChallengeRes.body.challengeId,
-        nonce: goodChallengeRes.body.nonce,
-        liveDescriptor: mockVector,
-        userId: regularUser.id,
-        challengeProof: validProof,
-      });
+    const goodVerifyRes = await request(app).post('/api/biometric/verify-challenge').send({
+      challengeId: goodChallengeRes.body.challengeId,
+      nonce: goodChallengeRes.body.nonce,
+      liveDescriptor: mockVector,
+      userId: regularUser.id,
+      challengeProof: validProof,
+    });
 
     expect(goodVerifyRes.status).toBe(200);
     expect(goodVerifyRes.body.ok).toBe(true);

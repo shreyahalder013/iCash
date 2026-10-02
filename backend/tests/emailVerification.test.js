@@ -29,16 +29,14 @@ describe('Email Verification System (zahid-afridi/EmailVerfication)', () => {
   let sessionCookie = null;
 
   test('POST /api/auth/register - Generates 6-digit email verification token and sets email_verified=false', async () => {
-    const res = await request(app)
-      .post('/api/auth/register')
-      .send({
-        fullName: 'Email Verification User',
-        phone: testPhone,
-        email: testEmail,
-        aadhaarNumber: testAadhaar,
-        pin: '1234',
-        emergencyPin: '4321',
-      });
+    const res = await request(app).post('/api/auth/register').send({
+      fullName: 'Email Verification User',
+      phone: testPhone,
+      email: testEmail,
+      aadhaarNumber: testAadhaar,
+      pin: '1234',
+      emergencyPin: '4321',
+    });
 
     expect(res.status).toBe(201);
     expect(res.body.ok).toBe(true);
@@ -68,12 +66,10 @@ describe('Email Verification System (zahid-afridi/EmailVerfication)', () => {
   });
 
   test('POST /api/auth/verify-email - Fails with invalid code', async () => {
-    const res = await request(app)
-      .post('/api/auth/verify-email')
-      .send({
-        email: testEmail,
-        code: '000000',
-      });
+    const res = await request(app).post('/api/auth/verify-email').send({
+      email: testEmail,
+      code: '000000',
+    });
 
     expect(res.status).toBe(400);
     expect(res.body.message).toMatch(/invalid or expired code/i);
@@ -88,23 +84,19 @@ describe('Email Verification System (zahid-afridi/EmailVerfication)', () => {
       },
     });
 
-    const res = await request(app)
-      .post('/api/auth/verify-email')
-      .send({
-        email: testEmail,
-        code: verificationCode,
-      });
+    const res = await request(app).post('/api/auth/verify-email').send({
+      email: testEmail,
+      code: verificationCode,
+    });
 
     expect(res.status).toBe(400);
     expect(res.body.message).toMatch(/invalid or expired code/i);
   });
 
   test('POST /api/auth/resend-verification - Generates fresh verification code', async () => {
-    const res = await request(app)
-      .post('/api/auth/resend-verification')
-      .send({
-        email: testEmail,
-      });
+    const res = await request(app).post('/api/auth/resend-verification').send({
+      email: testEmail,
+    });
 
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
@@ -115,18 +107,18 @@ describe('Email Verification System (zahid-afridi/EmailVerfication)', () => {
     });
 
     expect(refreshedUser.email_verification_token).toMatch(/^\d{6}$/);
-    expect(new Date(refreshedUser.email_verification_expires_at).getTime()).toBeGreaterThan(Date.now());
+    expect(new Date(refreshedUser.email_verification_expires_at).getTime()).toBeGreaterThan(
+      Date.now()
+    );
 
     verificationCode = refreshedUser.email_verification_token;
   });
 
   test('POST /api/auth/verifyEmail (reference route) - Verifies email with valid code', async () => {
-    const res = await request(app)
-      .post('/api/auth/verifyEmail')
-      .send({
-        email: testEmail,
-        code: verificationCode,
-      });
+    const res = await request(app).post('/api/auth/verifyEmail').send({
+      email: testEmail,
+      code: verificationCode,
+    });
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
@@ -167,13 +159,11 @@ describe('Email Verification System (zahid-afridi/EmailVerfication)', () => {
     let directCode = null;
 
     test('POST /auth/register - Accepts { name, email, password } and sends verification email', async () => {
-      const res = await request(app)
-        .post('/auth/register')
-        .send({
-          name: 'John Doe',
-          email: directEmail,
-          password: 'password123',
-        });
+      const res = await request(app).post('/auth/register').send({
+        name: 'John Doe',
+        email: directEmail,
+        password: 'password123',
+      });
 
       expect(res.status).toBe(201);
       expect(res.body.success).toBe(true);
@@ -186,11 +176,9 @@ describe('Email Verification System (zahid-afridi/EmailVerfication)', () => {
     });
 
     test('POST /auth/verifyEmail - Verifies with { code } only', async () => {
-      const res = await request(app)
-        .post('/auth/verifyEmail')
-        .send({
-          code: directCode,
-        });
+      const res = await request(app).post('/auth/verifyEmail').send({
+        code: directCode,
+      });
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);

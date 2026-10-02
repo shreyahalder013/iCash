@@ -39,7 +39,9 @@ async function getHealthScore(userId) {
     grade: score >= 80 ? 'A' : score >= 65 ? 'B' : score >= 50 ? 'C' : 'D',
     insights: [
       ...(outflow > inflow ? ['Spending currently exceeds recorded income.'] : []),
-      ...(balance < outflow / 3 ? ['Build an emergency fund covering at least three months of spending.'] : []),
+      ...(balance < outflow / 3
+        ? ['Build an emergency fund covering at least three months of spending.']
+        : []),
       ...(complaints ? ['Review open account complaints and resolve outstanding issues.'] : []),
     ],
     rating:

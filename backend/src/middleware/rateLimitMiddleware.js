@@ -99,4 +99,3 @@ module.exports = {
   biometricVerifyLimiter,
   biometricFrameLimiter,
 };
-

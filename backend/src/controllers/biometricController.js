@@ -5,7 +5,10 @@ const { biometricService } = require('../services/biometricService');
 const SecurityService = require('../services/securityService');
 
 function getBioTokenSecret() {
-  const base = process.env.BIO_TOKEN_JWT_SECRET || process.env.JWT_SECRET || 'icash-insecure-secret-key-change-in-prod';
+  const base =
+    process.env.BIO_TOKEN_JWT_SECRET ||
+    process.env.JWT_SECRET ||
+    'icash-insecure-secret-key-change-in-prod';
   return base + ':biometric-challenge-token-v1';
 }
 
@@ -29,7 +32,9 @@ class BiometricController {
           ipAddress: req.ip,
           deviceReference: req.headers['user-agent'],
         });
-        return res.status(403).json({ ok: false, message: 'Biometric enrollment refused: identity mismatch.' });
+        return res
+          .status(403)
+          .json({ ok: false, message: 'Biometric enrollment refused: identity mismatch.' });
       }
 
       const enrollment = await biometricService.enroll(req.user.id, descriptors);
@@ -100,11 +105,22 @@ class BiometricController {
       if (!verifyResult || !verifyResult.matched) {
         const allProfiles = await prisma.biometricProfile.findMany({
           where: { enrollment_status: 'ENROLLED' },
-          select: { id: true, user_id: true, face_descriptors: true, biometric_provider: true, biometric_reference: true },
+          select: {
+            id: true,
+            user_id: true,
+            face_descriptors: true,
+            biometric_provider: true,
+            biometric_reference: true,
+          },
         });
         let bestDistance = Infinity;
         for (const p of allProfiles) {
-          if (!p.face_descriptors || !Array.isArray(p.face_descriptors) || p.face_descriptors.length === 0) continue;
+          if (
+            !p.face_descriptors ||
+            !Array.isArray(p.face_descriptors) ||
+            p.face_descriptors.length === 0
+          )
+            continue;
           const r = await biometricService.verify(p.face_descriptors, liveDescriptor);
           if (r.matched && r.distance < bestDistance) {
             bestDistance = r.distance;
@@ -178,7 +194,7 @@ class BiometricController {
       if (!profile) return res.json({ ok: true, enrolled: false });
 
       res.json({
-        ok:       true,
+        ok: true,
         enrolled: profile.enrollment_status === 'ENROLLED',
         provider: profile.biometric_provider,
         // face_descriptors deliberately omitted

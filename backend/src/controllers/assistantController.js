@@ -26,7 +26,9 @@ class AssistantController {
         relation,
         role,
       });
-      res.status(201).json({ ok: true, message: 'Trusted assistant registered successfully.', assistant });
+      res
+        .status(201)
+        .json({ ok: true, message: 'Trusted assistant registered successfully.', assistant });
     } catch (err) {
       next(err);
     }
@@ -62,7 +64,10 @@ class AssistantController {
 
   static async requestEmergencyAssistance(req, res, next) {
     try {
-      const result = await TrustedAssistantService.requestEmergencyAssistance(req.user.id, req.body);
+      const result = await TrustedAssistantService.requestEmergencyAssistance(
+        req.user.id,
+        req.body
+      );
       res.json(result);
     } catch (err) {
       next(err);

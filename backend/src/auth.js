@@ -5,11 +5,12 @@ const prisma = require('./prisma');
 
 // Normalize baseURL so it is the root URL without trailing slash or /api/auth
 const rawUrl =
-  process.env.BETTER_AUTH_URL ||
-  process.env.RENDER_EXTERNAL_URL ||
-  'https://icash.onrender.com';
+  process.env.BETTER_AUTH_URL || process.env.RENDER_EXTERNAL_URL || 'https://icash.onrender.com';
 
-const baseURL = rawUrl.trim().replace(/\/+$/, '').replace(/\/api\/auth$/, '');
+const baseURL = rawUrl
+  .trim()
+  .replace(/\/+$/, '')
+  .replace(/\/api\/auth$/, '');
 
 const auth = betterAuth({
   baseURL,

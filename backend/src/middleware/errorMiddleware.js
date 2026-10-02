@@ -31,7 +31,11 @@ function errorHandler(err, req, res, next) {
     });
   }
 
-  if (err.name === 'ForbiddenError' || err.status === 403 || (err.message && err.message.includes('CORS'))) {
+  if (
+    err.name === 'ForbiddenError' ||
+    err.status === 403 ||
+    (err.message && err.message.includes('CORS'))
+  ) {
     return res.status(403).json({
       ok: false,
       error: 'Forbidden',
@@ -62,13 +66,19 @@ function errorHandler(err, req, res, next) {
     err.code === 'P1001' ||
     err.code === 'P1000' ||
     err.code === 'P1017' ||
-    (err.message && (err.message.includes("Can't reach database server") || err.message.includes('ECONNREFUSED') || err.message.includes('password authentication failed') || err.message.includes('Tenant or user not found')))
+    (err.message &&
+      (err.message.includes("Can't reach database server") ||
+        err.message.includes('ECONNREFUSED') ||
+        err.message.includes('password authentication failed') ||
+        err.message.includes('Tenant or user not found')))
   ) {
     const cleanDetail = err.message
       ? err.message
           .split('\n')
           .map((s) => s.trim())
-          .filter((s) => s && !s.startsWith('-->') && !s.startsWith('at ') && !s.includes('PrismaClient'))
+          .filter(
+            (s) => s && !s.startsWith('-->') && !s.startsWith('at ') && !s.includes('PrismaClient')
+          )
           .slice(-1)[0] || err.message
       : 'Database connection failed';
 

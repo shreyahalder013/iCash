@@ -93,7 +93,8 @@ app.use((req, res, next) => {
   res.removeHeader('X-Powered-By');
 
   // Request ID / Correlation ID tracing
-  const requestId = req.headers['x-request-id'] || (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()));
+  const requestId =
+    req.headers['x-request-id'] || (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()));
   req.id = requestId;
   res.setHeader('X-Request-ID', requestId);
 
@@ -105,14 +106,23 @@ app.use(
     origin(origin, callback) {
       const configured = (process.env.CORS_ORIGIN || process.env.CORS_ORIGINS || '')
         .split(',')
-        .map((value) => value.trim().replace(/^["']|["']$/g, '').replace(/\/+$/, ''))
+        .map((value) =>
+          value
+            .trim()
+            .replace(/^["']|["']$/g, '')
+            .replace(/\/+$/, '')
+        )
         .filter(Boolean);
 
       const defaults = [
         'https://icash.onrender.com',
         'https://icash-server.onrender.com',
         ...(process.env.RENDER_EXTERNAL_URL
-          ? [process.env.RENDER_EXTERNAL_URL.trim().replace(/^["']|["']$/g, '').replace(/\/+$/, '')]
+          ? [
+              process.env.RENDER_EXTERNAL_URL.trim()
+                .replace(/^["']|["']$/g, '')
+                .replace(/\/+$/, ''),
+            ]
           : []),
         ...(process.env.NODE_ENV === 'production'
           ? []
@@ -152,7 +162,13 @@ app.use(
       const matchesWildcard = allowed.some((pattern) => {
         if (!pattern.includes('*')) return false;
         const regexStr =
-          '^' + pattern.trim().replace(/\/+$/, '').replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$';
+          '^' +
+          pattern
+            .trim()
+            .replace(/\/+$/, '')
+            .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
+            .replace(/\*/g, '.*') +
+          '$';
         try {
           return new RegExp(regexStr, 'i').test(normalizedOrigin);
         } catch {
@@ -215,7 +231,9 @@ async function refreshDbHealth() {
       const hostMatch = rawUrl.match(/@([^/:?]+)(?::(\d+))?/);
       const host = hostMatch ? hostMatch[1] : 'unknown';
       const port = hostMatch && hostMatch[2] ? hostMatch[2] : '5432';
-      console.warn(`\n⚠️  [Database Warning] Unable to reach PostgreSQL at \`${host}:${port}\`: ${e.message}`);
+      console.warn(
+        `\n⚠️  [Database Warning] Unable to reach PostgreSQL at \`${host}:${port}\`: ${e.message}`
+      );
       if (host.startsWith('dpg-') && !host.includes('.')) {
         console.warn(`💡 Render Guidance:
    Host "${host}" is a Render Internal Database hostname.
@@ -287,7 +305,11 @@ async function handler(contextOrReq, res, next) {
         return appwriteRes.text(body, status, headers);
       }
       if (typeof appwriteRes.json === 'function') {
-        return appwriteRes.json(typeof body === 'string' ? { content: body } : body, status, headers);
+        return appwriteRes.json(
+          typeof body === 'string' ? { content: body } : body,
+          status,
+          headers
+        );
       }
     };
 
@@ -365,7 +387,14 @@ function autoSyncDatabase() {
   try {
     const { exec } = require('child_process');
     console.log('🔄 Checking database schema with Prisma db push (non-blocking)...');
-    const prismaBin = path.join(__dirname, '..', '..', 'node_modules', '.bin', process.platform === 'win32' ? 'prisma.cmd' : 'prisma');
+    const prismaBin = path.join(
+      __dirname,
+      '..',
+      '..',
+      'node_modules',
+      '.bin',
+      process.platform === 'win32' ? 'prisma.cmd' : 'prisma'
+    );
     const cmd = require('fs').existsSync(prismaBin)
       ? `"${prismaBin}" db push --schema=backend/prisma/schema.prisma --skip-generate`
       : 'npx --no-install prisma db push --schema=backend/prisma/schema.prisma --skip-generate';
@@ -386,9 +415,10 @@ function ensureLivenessServerRunning() {
   const http = require('http');
   const req = http.get('http://127.0.0.1:5001/health', () => {});
   req.on('error', () => {
-    const pythonExe = process.platform === 'win32'
-      ? path.join(__dirname, '..', '..', '.venv', 'Scripts', 'python.exe')
-      : path.join(__dirname, '..', '..', '.venv', 'bin', 'python');
+    const pythonExe =
+      process.platform === 'win32'
+        ? path.join(__dirname, '..', '..', '.venv', 'Scripts', 'python.exe')
+        : path.join(__dirname, '..', '..', '.venv', 'bin', 'python');
     const fs = require('fs');
     const cmd = fs.existsSync(pythonExe) ? pythonExe : 'python';
     const appPath = path.join(__dirname, '..', '..', 'liveness_server', 'app.py');

@@ -1,5 +1,10 @@
 const AuthService = require('../services/authService');
-const { COOKIE_NAME, getCookieOptions, getClearCookieOptions, signToken } = require('../utils/token');
+const {
+  COOKIE_NAME,
+  getCookieOptions,
+  getClearCookieOptions,
+  signToken,
+} = require('../utils/token');
 
 class AuthController {
   static async register(req, res, next) {
@@ -36,7 +41,9 @@ class AuthController {
     try {
       const userId = req.biometricUserId;
       if (!userId) {
-        return res.status(403).json({ ok: false, message: 'Biometric authentication is required.' });
+        return res
+          .status(403)
+          .json({ ok: false, message: 'Biometric authentication is required.' });
       }
       const { user, token } = await AuthService.loginWithBiometric(userId, req);
       res.cookie(COOKIE_NAME, token, getCookieOptions());
@@ -125,7 +132,11 @@ class AuthController {
       const result = await AuthService.verifyEmail({ code, email, userId });
       res.status(200).json(result);
     } catch (err) {
-      if (err.status === 400 || err.message === 'Invalid or Expired Code' || err.message === 'Verification code is required') {
+      if (
+        err.status === 400 ||
+        err.message === 'Invalid or Expired Code' ||
+        err.message === 'Verification code is required'
+      ) {
         return res.status(400).json({ success: false, ok: false, message: err.message });
       }
       next(err);

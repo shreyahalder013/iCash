@@ -16,10 +16,17 @@ if (process.env.PRISMA_GENERATE_SKIP === 'true') {
     // Ensure DATABASE_URL is set so prisma generate succeeds even if not set in build environment
     const buildEnv = {
       ...process.env,
-      DATABASE_URL: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/icash?schema=public',
+      DATABASE_URL:
+        process.env.DATABASE_URL ||
+        'postgresql://postgres:postgres@localhost:5432/icash?schema=public',
     };
 
-    const prismaBin = path.join(rootDir, 'node_modules', '.bin', process.platform === 'win32' ? 'prisma.cmd' : 'prisma');
+    const prismaBin = path.join(
+      rootDir,
+      'node_modules',
+      '.bin',
+      process.platform === 'win32' ? 'prisma.cmd' : 'prisma'
+    );
     const cmd = fs.existsSync(prismaBin)
       ? `"${prismaBin}" generate --schema=backend/prisma/schema.prisma`
       : 'npx --no-install prisma generate --schema=backend/prisma/schema.prisma';
@@ -33,12 +40,23 @@ if (process.env.PRISMA_GENERATE_SKIP === 'true') {
     console.warn('[Build] Warning: Prisma generation encountered an issue:', err.message);
     // Try fallback in backend folder
     try {
-      const backendBin = path.join(rootDir, 'backend', 'node_modules', '.bin', process.platform === 'win32' ? 'prisma.cmd' : 'prisma');
+      const backendBin = path.join(
+        rootDir,
+        'backend',
+        'node_modules',
+        '.bin',
+        process.platform === 'win32' ? 'prisma.cmd' : 'prisma'
+      );
       if (fs.existsSync(backendBin)) {
         execSync(`"${backendBin}" generate --schema=backend/prisma/schema.prisma`, {
           cwd: rootDir,
           stdio: 'inherit',
-          env: { ...process.env, DATABASE_URL: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/icash?schema=public' }
+          env: {
+            ...process.env,
+            DATABASE_URL:
+              process.env.DATABASE_URL ||
+              'postgresql://postgres:postgres@localhost:5432/icash?schema=public',
+          },
         });
       }
     } catch (err2) {
@@ -107,8 +125,13 @@ fs.writeFileSync(path.join(nextDir, 'standalone', 'server.js'), standaloneServer
 
 // Also copy backend to standalone folder for isolated runtimes
 try {
-  fs.cpSync(path.join(rootDir, 'backend'), path.join(nextDir, 'standalone', 'backend'), { recursive: true });
-  fs.copyFileSync(path.join(rootDir, 'package.json'), path.join(nextDir, 'standalone', 'package.json'));
+  fs.cpSync(path.join(rootDir, 'backend'), path.join(nextDir, 'standalone', 'backend'), {
+    recursive: true,
+  });
+  fs.copyFileSync(
+    path.join(rootDir, 'package.json'),
+    path.join(nextDir, 'standalone', 'package.json')
+  );
 } catch (e) {
   // best effort copy
 }

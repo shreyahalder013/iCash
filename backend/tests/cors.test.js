@@ -3,9 +3,7 @@ const app = require('../src/server');
 
 describe('CORS Configuration Tests', () => {
   test('allows requests from https://icash.onrender.com', async () => {
-    const res = await request(app)
-      .get('/api/health')
-      .set('Origin', 'https://icash.onrender.com');
+    const res = await request(app).get('/api/health').set('Origin', 'https://icash.onrender.com');
 
     expect(res.status).toBe(200);
     expect(res.headers['access-control-allow-origin']).toBe('https://icash.onrender.com');

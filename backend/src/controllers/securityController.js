@@ -28,7 +28,10 @@ class SecurityController {
           lastLoginAt: req.user.last_login_at,
         },
         recentEvents,
-        user: require('../services/authService').toSafeUser(req.user, req.user.accounts?.[0] || null),
+        user: require('../services/authService').toSafeUser(
+          req.user,
+          req.user.accounts?.[0] || null
+        ),
       });
     } catch (err) {
       next(err);

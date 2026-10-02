@@ -2,12 +2,14 @@ const FraudService = require('../src/services/fraudService');
 
 describe('fraud risk scoring', () => {
   test('returns the documented 0-100 score and critical level', () => {
-    expect(FraudService.calculateRisk({
-      amount: 50000,
-      recentTransactions: 5,
-      transactionType: 'TRANSFER',
-      recipientName: null,
-    })).toEqual({
+    expect(
+      FraudService.calculateRisk({
+        amount: 50000,
+        recentTransactions: 5,
+        transactionType: 'TRANSFER',
+        recipientName: null,
+      })
+    ).toEqual({
       score: 90,
       riskLevel: 'CRITICAL',
       indicators: ['HIGH_VALUE', 'HIGH_FREQUENCY', 'UNKNOWN_RECIPIENT'],

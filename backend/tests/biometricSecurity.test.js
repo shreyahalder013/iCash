@@ -91,12 +91,10 @@ describe('Biometric Security & Anti-Spoofing Subsystem', () => {
       },
     });
 
-    const res = await request(app)
-      .post('/api/biometric/verify-challenge')
-      .send({
-        challengeId: expiredChallenge.id,
-        nonce: expiredChallenge.nonce,
-      });
+    const res = await request(app).post('/api/biometric/verify-challenge').send({
+      challengeId: expiredChallenge.id,
+      nonce: expiredChallenge.nonce,
+    });
 
     expect(res.status).toBe(400);
     expect(res.body.ok).toBe(false);
@@ -111,12 +109,10 @@ describe('Biometric Security & Anti-Spoofing Subsystem', () => {
 
     const { challengeId } = chalRes.body;
 
-    const res = await request(app)
-      .post('/api/biometric/verify-challenge')
-      .send({
-        challengeId,
-        nonce: '00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff',
-      });
+    const res = await request(app).post('/api/biometric/verify-challenge').send({
+      challengeId,
+      nonce: '00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff',
+    });
 
     expect(res.status).toBe(400);
     expect(res.body.ok).toBe(false);
@@ -128,14 +124,12 @@ describe('Biometric Security & Anti-Spoofing Subsystem', () => {
       .post('/api/biometric/challenge')
       .send({ userIdHint: testUser.id });
 
-    const res = await request(app)
-      .post('/api/biometric/frame')
-      .send({
-        challengeId: chalRes.body.challengeId,
-        nonce: '00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff',
-        image: 'data:image/jpeg;base64,AA==',
-        timestamp: Date.now(),
-      });
+    const res = await request(app).post('/api/biometric/frame').send({
+      challengeId: chalRes.body.challengeId,
+      nonce: '00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff',
+      image: 'data:image/jpeg;base64,AA==',
+      timestamp: Date.now(),
+    });
 
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('NonceMismatch');
@@ -152,12 +146,10 @@ describe('Biometric Security & Anti-Spoofing Subsystem', () => {
       },
     });
 
-    const res = await request(app)
-      .post('/api/biometric/verify-challenge')
-      .send({
-        challengeId: usedChallenge.id,
-        nonce: usedChallenge.nonce,
-      });
+    const res = await request(app).post('/api/biometric/verify-challenge').send({
+      challengeId: usedChallenge.id,
+      nonce: usedChallenge.nonce,
+    });
 
     expect(res.status).toBe(400);
     expect(res.body.ok).toBe(false);
@@ -303,9 +295,7 @@ describe('Biometric Security & Anti-Spoofing Subsystem', () => {
 
   // ── 11. Secure Logout Session Termination ─────────────────────────────────
   test('POST /api/auth/logout - Completely invalidates session cookies and authorization', async () => {
-    const logoutRes = await request(app)
-      .post('/api/auth/logout')
-      .set('Cookie', userCookie);
+    const logoutRes = await request(app).post('/api/auth/logout').set('Cookie', userCookie);
 
     expect(logoutRes.status).toBe(200);
     expect(logoutRes.body.ok).toBe(true);
@@ -322,31 +312,31 @@ describe('Biometric Security & Anti-Spoofing Subsystem', () => {
   // 20 sequential challenge requests against a remote database (WAN latency
   // ~2-3s per request) can legitimately exceed the default 60s test timeout —
   // this is infrastructure latency, not a logic failure.
-  test(
-    'POST /api/biometric/challenge - Randomizes across all 5 challenge types',
-    async () => {
-      const challengeTypes = new Set();
-      // Request multiple challenges to verify randomization
-      for (let i = 0; i < 20; i++) {
-        const res = await request(app)
-          .post('/api/biometric/challenge')
-          .send({ userIdHint: testUser.id });
-        expect(res.status).toBe(200);
-        expect(res.body.ok).toBe(true);
-        challengeTypes.add(res.body.challengeType);
-      }
-      // Should have seen at least 3 different challenge types (probabilistic)
-      expect(challengeTypes.size).toBeGreaterThanOrEqual(3);
-      expect([...challengeTypes].every(t => [
-        'BLINK_TWICE',
-        'BLINK_PAUSE_BLINK',
-        'BLINK_TURN_LEFT_BLINK',
-        'BLINK_TURN_RIGHT_BLINK',
-        'BLINK_TWICE_WITH_RANDOM_INTERVAL',
-      ].includes(t))).toBe(true);
-    },
-    180000
-  );
+  test('POST /api/biometric/challenge - Randomizes across all 5 challenge types', async () => {
+    const challengeTypes = new Set();
+    // Request multiple challenges to verify randomization
+    for (let i = 0; i < 20; i++) {
+      const res = await request(app)
+        .post('/api/biometric/challenge')
+        .send({ userIdHint: testUser.id });
+      expect(res.status).toBe(200);
+      expect(res.body.ok).toBe(true);
+      challengeTypes.add(res.body.challengeType);
+    }
+    // Should have seen at least 3 different challenge types (probabilistic)
+    expect(challengeTypes.size).toBeGreaterThanOrEqual(3);
+    expect(
+      [...challengeTypes].every((t) =>
+        [
+          'BLINK_TWICE',
+          'BLINK_PAUSE_BLINK',
+          'BLINK_TURN_LEFT_BLINK',
+          'BLINK_TURN_RIGHT_BLINK',
+          'BLINK_TWICE_WITH_RANDOM_INTERVAL',
+        ].includes(t)
+      )
+    ).toBe(true);
+  }, 180000);
 
   // ── 13. Challenge Type: BLINK_PAUSE_BLINK Specifics ──────────────────────────
   test('Challenge BLINK_PAUSE_BLINK - Requires pause between blinks', async () => {
@@ -362,13 +352,11 @@ describe('Biometric Security & Anti-Spoofing Subsystem', () => {
 
     // Simulate temporal proof with only 1 blink (missing pause + second blink)
     const frames = generateBlinkSequence({ blinkCount: 1, totalFrames: 18 });
-    const res = await request(app)
-      .post('/api/biometric/verify-challenge')
-      .send({
-        challengeId: challenge.id,
-        nonce: challenge.nonce,
-        challengeProof: frames,
-      });
+    const res = await request(app).post('/api/biometric/verify-challenge').send({
+      challengeId: challenge.id,
+      nonce: challenge.nonce,
+      challengeProof: frames,
+    });
 
     expect(res.status).toBe(403);
     expect(res.body.ok).toBe(false);
@@ -388,15 +376,15 @@ describe('Biometric Security & Anti-Spoofing Subsystem', () => {
 
     // Simulate temporal proof with blinks but no head turn (yaw stays near 0)
     const frames = generateBlinkSequence({ blinkCount: 2, totalFrames: 30 });
-    frames.forEach(f => { f.yaw = 0; }); // No head turn
+    frames.forEach((f) => {
+      f.yaw = 0;
+    }); // No head turn
 
-    const res = await request(app)
-      .post('/api/biometric/verify-challenge')
-      .send({
-        challengeId: challenge.id,
-        nonce: challenge.nonce,
-        challengeProof: frames,
-      });
+    const res = await request(app).post('/api/biometric/verify-challenge').send({
+      challengeId: challenge.id,
+      nonce: challenge.nonce,
+      challengeProof: frames,
+    });
 
     expect(res.status).toBe(403);
     expect(res.body.ok).toBe(false);
@@ -416,15 +404,15 @@ describe('Biometric Security & Anti-Spoofing Subsystem', () => {
 
     // Simulate temporal proof with blinks but no head turn (yaw stays near 0)
     const frames = generateBlinkSequence({ blinkCount: 2, totalFrames: 30 });
-    frames.forEach(f => { f.yaw = 0; }); // No head turn
+    frames.forEach((f) => {
+      f.yaw = 0;
+    }); // No head turn
 
-    const res = await request(app)
-      .post('/api/biometric/verify-challenge')
-      .send({
-        challengeId: challenge.id,
-        nonce: challenge.nonce,
-        challengeProof: frames,
-      });
+    const res = await request(app).post('/api/biometric/verify-challenge').send({
+      challengeId: challenge.id,
+      nonce: challenge.nonce,
+      challengeProof: frames,
+    });
 
     expect(res.status).toBe(403);
     expect(res.body.ok).toBe(false);
@@ -456,13 +444,11 @@ describe('Biometric Security & Anti-Spoofing Subsystem', () => {
       time += 80;
     }
 
-    const res = await request(app)
-      .post('/api/biometric/verify-challenge')
-      .send({
-        challengeId: challenge.id,
-        nonce: challenge.nonce,
-        challengeProof: staticFrames,
-      });
+    const res = await request(app).post('/api/biometric/verify-challenge').send({
+      challengeId: challenge.id,
+      nonce: challenge.nonce,
+      challengeProof: staticFrames,
+    });
 
     expect(res.status).toBe(403);
     expect(res.body.ok).toBe(false);
@@ -488,19 +474,17 @@ describe('Biometric Security & Anti-Spoofing Subsystem', () => {
       replayFrames.push({
         timestamp: time,
         leftEAR: 0.29 + Math.sin(i * 0.1) * 0.005,
-        rightEAR: 0.30 + Math.cos(i * 0.1) * 0.005,
+        rightEAR: 0.3 + Math.cos(i * 0.1) * 0.005,
         state: 'OPEN',
       });
       time += 80;
     }
 
-    const res = await request(app)
-      .post('/api/biometric/verify-challenge')
-      .send({
-        challengeId: challenge.id,
-        nonce: challenge.nonce,
-        challengeProof: replayFrames,
-      });
+    const res = await request(app).post('/api/biometric/verify-challenge').send({
+      challengeId: challenge.id,
+      nonce: challenge.nonce,
+      challengeProof: replayFrames,
+    });
 
     expect(res.status).toBe(403);
     expect(res.body.ok).toBe(false);
@@ -524,20 +508,18 @@ describe('Biometric Security & Anti-Spoofing Subsystem', () => {
     for (let i = 0; i < 20; i++) {
       closedEyeFrames.push({
         timestamp: time,
-        leftEAR: 0.10,
-        rightEAR: 0.10,
+        leftEAR: 0.1,
+        rightEAR: 0.1,
         state: 'CLOSED',
       });
       time += 80; // 1600ms total
     }
 
-    const res = await request(app)
-      .post('/api/biometric/verify-challenge')
-      .send({
-        challengeId: challenge.id,
-        nonce: challenge.nonce,
-        challengeProof: closedEyeFrames,
-      });
+    const res = await request(app).post('/api/biometric/verify-challenge').send({
+      challengeId: challenge.id,
+      nonce: challenge.nonce,
+      challengeProof: closedEyeFrames,
+    });
 
     expect(res.status).toBe(403);
     expect(res.body.ok).toBe(false);
@@ -557,13 +539,11 @@ describe('Biometric Security & Anti-Spoofing Subsystem', () => {
 
     const frames = generateBlinkSequence({ blinkCount: 1, totalFrames: 18 });
 
-    const res = await request(app)
-      .post('/api/biometric/verify-challenge')
-      .send({
-        challengeId: challenge.id,
-        nonce: challenge.nonce,
-        challengeProof: frames,
-      });
+    const res = await request(app).post('/api/biometric/verify-challenge').send({
+      challengeId: challenge.id,
+      nonce: challenge.nonce,
+      challengeProof: frames,
+    });
 
     expect(res.status).toBe(403);
     expect(res.body.ok).toBe(false);
@@ -588,13 +568,11 @@ describe('Biometric Security & Anti-Spoofing Subsystem', () => {
       { timestamp: 1200, leftEAR: 0.3, rightEAR: 0.3 },
     ];
 
-    const res = await request(app)
-      .post('/api/biometric/verify-challenge')
-      .send({
-        challengeId: challenge.id,
-        nonce: challenge.nonce,
-        challengeProof: fewFrames,
-      });
+    const res = await request(app).post('/api/biometric/verify-challenge').send({
+      challengeId: challenge.id,
+      nonce: challenge.nonce,
+      challengeProof: fewFrames,
+    });
 
     expect(res.status).toBe(403);
     expect(res.body.ok).toBe(false);
@@ -622,13 +600,11 @@ describe('Biometric Security & Anti-Spoofing Subsystem', () => {
       time += 20; // total 300ms
     }
 
-    const res = await request(app)
-      .post('/api/biometric/verify-challenge')
-      .send({
-        challengeId: challenge.id,
-        nonce: challenge.nonce,
-        challengeProof: rapidFrames,
-      });
+    const res = await request(app).post('/api/biometric/verify-challenge').send({
+      challengeId: challenge.id,
+      nonce: challenge.nonce,
+      challengeProof: rapidFrames,
+    });
 
     expect(res.status).toBe(403);
     expect(res.body.ok).toBe(false);
@@ -666,13 +642,11 @@ describe('Biometric Security & Anti-Spoofing Subsystem', () => {
       }
     }
 
-    const res = await request(app)
-      .post('/api/biometric/verify-challenge')
-      .send({
-        challengeId: challenge.id,
-        nonce: challenge.nonce,
-        challengeProof: fastBlinkFrames,
-      });
+    const res = await request(app).post('/api/biometric/verify-challenge').send({
+      challengeId: challenge.id,
+      nonce: challenge.nonce,
+      challengeProof: fastBlinkFrames,
+    });
 
     expect(res.status).toBe(403);
     expect(res.body.ok).toBe(false);
@@ -711,13 +685,11 @@ describe('Biometric Security & Anti-Spoofing Subsystem', () => {
       }
     }
 
-    const res = await request(app)
-      .post('/api/biometric/verify-challenge')
-      .send({
-        challengeId: challenge.id,
-        nonce: challenge.nonce,
-        challengeProof: slowBlinkFrames,
-      });
+    const res = await request(app).post('/api/biometric/verify-challenge').send({
+      challengeId: challenge.id,
+      nonce: challenge.nonce,
+      challengeProof: slowBlinkFrames,
+    });
 
     expect(res.status).toBe(403);
     expect(res.body.ok).toBe(false);
@@ -756,13 +728,11 @@ describe('Biometric Security & Anti-Spoofing Subsystem', () => {
       time += 80;
     }
 
-    const res = await request(app)
-      .post('/api/biometric/verify-challenge')
-      .send({
-        challengeId: challenge.id,
-        nonce: challenge.nonce,
-        challengeProof: noDebounceFrames,
-      });
+    const res = await request(app).post('/api/biometric/verify-challenge').send({
+      challengeId: challenge.id,
+      nonce: challenge.nonce,
+      challengeProof: noDebounceFrames,
+    });
 
     expect(res.status).toBe(403);
     expect(res.body.ok).toBe(false);
@@ -785,12 +755,10 @@ describe('Biometric Security & Anti-Spoofing Subsystem', () => {
     });
 
     // No liveness service, no challengeProof - should fail in production
-    const res = await request(app)
-      .post('/api/biometric/verify-challenge')
-      .send({
-        challengeId: challenge.id,
-        nonce: challenge.nonce,
-      });
+    const res = await request(app).post('/api/biometric/verify-challenge').send({
+      challengeId: challenge.id,
+      nonce: challenge.nonce,
+    });
 
     expect(res.status).toBe(503);
     expect(res.body.ok).toBe(false);
@@ -802,7 +770,13 @@ describe('Biometric Security & Anti-Spoofing Subsystem', () => {
 });
 
 // Helper to generate realistic blink sequences for testing
-function generateBlinkSequence({ totalFrames = 30, intervalMs = 80, blinkCount = 2, baselineEAR = 0.30, closedEAR = 0.12 }) {
+function generateBlinkSequence({
+  totalFrames = 30,
+  intervalMs = 80,
+  blinkCount = 2,
+  baselineEAR = 0.3,
+  closedEAR = 0.12,
+}) {
   const frames = [];
   let currentTime = 100000;
 

@@ -16,7 +16,11 @@ describe('smart expense categorization', () => {
   });
 
   test('recognizes education and investment merchants', () => {
-    expect(SmartExpenseService.categorize('Monthly SIP investment', 'PAYMENT').category).toBe('INVESTMENT');
-    expect(SmartExpenseService.categorize('Online course tuition', 'PAYMENT').category).toBe('EDUCATION');
+    expect(SmartExpenseService.categorize('Monthly SIP investment', 'PAYMENT').category).toBe(
+      'INVESTMENT'
+    );
+    expect(SmartExpenseService.categorize('Online course tuition', 'PAYMENT').category).toBe(
+      'EDUCATION'
+    );
   });
 });

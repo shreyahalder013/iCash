@@ -68,7 +68,8 @@ class TrustedAssistantService {
       throw err;
     }
 
-    const assignedRole = role === 'AUTHORIZED_REPRESENTATIVE' ? 'AUTHORIZED_REPRESENTATIVE' : 'TRUSTED_HELPER';
+    const assignedRole =
+      role === 'AUTHORIZED_REPRESENTATIVE' ? 'AUTHORIZED_REPRESENTATIVE' : 'TRUSTED_HELPER';
     const assistantId = `asst_${crypto.randomBytes(8).toString('hex')}`;
 
     const assistant = {
@@ -89,13 +90,15 @@ class TrustedAssistantService {
     list.push(assistant);
 
     // Also update emergency contact on owner's record if not already set
-    await prisma.user.update({
-      where: { id: ownerId },
-      data: {
-        emergency_contact_name: assistant.name,
-        emergency_contact_phone: assistant.phone,
-      },
-    }).catch(() => {});
+    await prisma.user
+      .update({
+        where: { id: ownerId },
+        data: {
+          emergency_contact_name: assistant.name,
+          emergency_contact_phone: assistant.phone,
+        },
+      })
+      .catch(() => {});
 
     await SecurityService.recordEvent({
       userId: ownerId,
@@ -182,7 +185,14 @@ class TrustedAssistantService {
   static async requestEmergencyAssistance(ownerId, details = {}) {
     const user = await prisma.user.findUnique({
       where: { id: ownerId },
-      select: { id: true, full_name: true, phone: true, emergency_contact_name: true, emergency_contact_phone: true, is_senior: true },
+      select: {
+        id: true,
+        full_name: true,
+        phone: true,
+        emergency_contact_name: true,
+        emergency_contact_phone: true,
+        is_senior: true,
+      },
     });
 
     const incidentId = `EMERGENCY_${Date.now()}_${ownerId.slice(0, 6).toUpperCase()}`;
@@ -198,7 +208,8 @@ class TrustedAssistantService {
       ok: true,
       incidentId,
       status: 'ALERT_DISPATCHED',
-      message: 'Emergency assistance alert initiated. Your designated representative and customer support have been notified.',
+      message:
+        'Emergency assistance alert initiated. Your designated representative and customer support have been notified.',
       contactName: user?.emergency_contact_name || 'Designated Contact',
       contactPhone: user?.emergency_contact_phone || 'Customer Care: 1800-iCASH',
       timestamp: new Date().toISOString(),

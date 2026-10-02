@@ -38,7 +38,9 @@ function getTransporter() {
         try {
           return await realTransport.sendMail(options);
         } catch (smtpErr) {
-          console.warn(`[iCash Email] SMTP dispatch failed (${smtpErr.message}). Falling back to dev logger:`);
+          console.warn(
+            `[iCash Email] SMTP dispatch failed (${smtpErr.message}). Falling back to dev logger:`
+          );
           console.log(`\n============================================================`);
           console.log(`📧 [EMAIL DISPATCH] To: ${options.to}`);
           console.log(`   Subject: ${options.subject}`);

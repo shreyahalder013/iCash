@@ -56,7 +56,11 @@ router.post('/topup', transactionLimiter, TransactionController.topUpDemoFunds);
 // Demo deposit workflow used by the dashboard. It is intentionally separate
 // from generic transaction creation so DEPOSIT cannot be forged by clients.
 router.post('/deposit', transactionLimiter, TransactionController.depositMoney);
-router.patch('/:id/category', validateRequest(categoryCorrectionSchema), TransactionController.correctCategory);
+router.patch(
+  '/:id/category',
+  validateRequest(categoryCorrectionSchema),
+  TransactionController.correctCategory
+);
 
 // Emergency contacts management
 router.post(

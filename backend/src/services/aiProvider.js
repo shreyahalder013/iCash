@@ -5,7 +5,10 @@ const fetch = require('node-fetch');
  * Configure OPENAI_API_KEY to enable the hosted model.
  */
 class AIProvider {
-  constructor({ apiKey = process.env.OPENAI_API_KEY, model = process.env.OPENAI_MODEL || 'gpt-4o-mini' } = {}) {
+  constructor({
+    apiKey = process.env.OPENAI_API_KEY,
+    model = process.env.OPENAI_MODEL || 'gpt-4o-mini',
+  } = {}) {
     this.apiKey = apiKey;
     this.model = model;
   }

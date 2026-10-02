@@ -107,12 +107,8 @@ class AuthService {
     const contactsData = normalizedContacts.length > 0 ? JSON.stringify(normalizedContacts) : null;
 
     // Generate cryptographically secure 6-digit email verification token (10-min TTL) if email is provided
-    const emailVerificationToken = email
-      ? crypto.randomInt(100000, 1000000).toString()
-      : null;
-    const emailVerificationExpiresAt = email
-      ? new Date(Date.now() + 10 * 60 * 1000)
-      : null;
+    const emailVerificationToken = email ? crypto.randomInt(100000, 1000000).toString() : null;
+    const emailVerificationExpiresAt = email ? new Date(Date.now() + 10 * 60 * 1000) : null;
 
     // Creation of user, default bank account, and biometric profile
     const runCreation = async (client) => {
@@ -204,7 +200,11 @@ class AuthService {
         timeout: 30000,
       });
     } catch (txErr) {
-      if (txErr.code === 'P2028' || txErr.message?.includes('Transaction not found') || txErr.message?.includes('Transaction API error')) {
+      if (
+        txErr.code === 'P2028' ||
+        txErr.message?.includes('Transaction not found') ||
+        txErr.message?.includes('Transaction API error')
+      ) {
         result = await runCreation(prisma);
       } else {
         throw txErr;
@@ -303,7 +303,11 @@ class AuthService {
       },
     });
 
-    if (!user || user.status !== 'ACTIVE' || (user.locked_until && user.locked_until > new Date())) {
+    if (
+      !user ||
+      user.status !== 'ACTIVE' ||
+      (user.locked_until && user.locked_until > new Date())
+    ) {
       const err = new Error('Account access is currently restricted.');
       err.status = 403;
       throw err;
@@ -510,11 +514,16 @@ class AuthService {
       isSenior: user.is_senior,
       emergencyContact: (() => {
         if (!user.emergency_contact_name) return null;
-        if (user.emergency_contact_name.startsWith('[') || user.emergency_contact_name.startsWith('{')) {
+        if (
+          user.emergency_contact_name.startsWith('[') ||
+          user.emergency_contact_name.startsWith('{')
+        ) {
           try {
             const arr = JSON.parse(user.emergency_contact_name);
             return Array.isArray(arr) ? arr[0] : arr;
-          } catch (e) {}
+          } catch (e) {
+            // JSON parse failed — fall through to legacy plain-string handling below
+          }
         }
         return {
           name: user.emergency_contact_name,
@@ -524,11 +533,16 @@ class AuthService {
       })(),
       emergencyContacts: (() => {
         if (!user.emergency_contact_name) return [];
-        if (user.emergency_contact_name.startsWith('[') || user.emergency_contact_name.startsWith('{')) {
+        if (
+          user.emergency_contact_name.startsWith('[') ||
+          user.emergency_contact_name.startsWith('{')
+        ) {
           try {
             const arr = JSON.parse(user.emergency_contact_name);
             return Array.isArray(arr) ? arr : [arr];
-          } catch (e) {}
+          } catch (e) {
+            // JSON parse failed — fall through to legacy plain-string handling below
+          }
         }
         return [
           {
@@ -578,13 +592,17 @@ class AuthService {
       if (userId) invalidateWhere.id = userId;
       else if (email) invalidateWhere.email = { equals: String(email).trim(), mode: 'insensitive' };
       if (Object.keys(invalidateWhere).length > 0) {
-        await prisma.user.updateMany({
-          where: invalidateWhere,
-          data: { email_verification_token: null, email_verification_expires_at: null },
-        }).catch(() => {});
+        await prisma.user
+          .updateMany({
+            where: invalidateWhere,
+            data: { email_verification_token: null, email_verification_expires_at: null },
+          })
+          .catch(() => {});
       }
       this._otpAttempts.delete(attemptKey);
-      const err = new Error('Maximum verification attempts exceeded. Verification code invalidated. Please request a new code.');
+      const err = new Error(
+        'Maximum verification attempts exceeded. Verification code invalidated. Please request a new code.'
+      );
       err.status = 429;
       throw err;
     }
@@ -593,10 +611,7 @@ class AuthService {
     const codeHash = crypto.createHash('sha256').update(cleanCode).digest('hex');
 
     const where = {
-      OR: [
-        { email_verification_token: codeHash },
-        { email_verification_token: cleanCode },
-      ],
+      OR: [{ email_verification_token: codeHash }, { email_verification_token: cleanCode }],
       email_verification_expires_at: { gt: now },
     };
 
@@ -640,15 +655,20 @@ class AuthService {
       if (attempts >= 5) {
         const invalidateWhere = {};
         if (userId) invalidateWhere.id = userId;
-        else if (email) invalidateWhere.email = { equals: String(email).trim(), mode: 'insensitive' };
+        else if (email)
+          invalidateWhere.email = { equals: String(email).trim(), mode: 'insensitive' };
         if (Object.keys(invalidateWhere).length > 0) {
-          await prisma.user.updateMany({
-            where: invalidateWhere,
-            data: { email_verification_token: null, email_verification_expires_at: null },
-          }).catch(() => {});
+          await prisma.user
+            .updateMany({
+              where: invalidateWhere,
+              data: { email_verification_token: null, email_verification_expires_at: null },
+            })
+            .catch(() => {});
         }
         this._otpAttempts.delete(attemptKey);
-        const err = new Error('Maximum verification attempts exceeded. Verification code invalidated. Please request a new code.');
+        const err = new Error(
+          'Maximum verification attempts exceeded. Verification code invalidated. Please request a new code.'
+        );
         err.status = 429;
         throw err;
       }

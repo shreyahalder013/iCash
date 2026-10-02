@@ -1,9 +1,9 @@
 const express = require('express');
-const router  = express.Router();
-const BiometricController          = require('../controllers/biometricController');
+const router = express.Router();
+const BiometricController = require('../controllers/biometricController');
 const BiometricChallengeController = require('../controllers/biometricChallengeController');
-const { authenticate }             = require('../middleware/authMiddleware');
-const { validateRequest }          = require('../middleware/validateMiddleware');
+const { authenticate } = require('../middleware/authMiddleware');
+const { validateRequest } = require('../middleware/validateMiddleware');
 const {
   biometricEnrollSchema,
   biometricVerifySchema,
@@ -37,11 +37,7 @@ router.post(
  * Streams camera evidence frames directly to the server liveness & anti-spoofing engine.
  * Rate-limited: 400 per 1 min per IP.
  */
-router.post(
-  '/frame',
-  biometricFrameLimiter,
-  BiometricChallengeController.submitFrame
-);
+router.post('/frame', biometricFrameLimiter, BiometricChallengeController.submitFrame);
 
 /**
  * POST /api/biometric/verify-challenge

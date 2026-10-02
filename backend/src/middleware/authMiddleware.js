@@ -20,7 +20,9 @@ let authInstance = null;
 try {
   const authModule = require('../auth');
   authInstance = authModule.auth || authModule;
-} catch (_) {}
+} catch (_) {
+  // Better Auth module not available — fallback to JWT-only mode
+}
 
 /**
  * Authentication middleware that verifies Better Auth session or JWT from HTTP-only cookie/Authorization header.
@@ -84,7 +86,11 @@ async function authenticate(req, res, next) {
             where: { session_reference: decoded.sessionReference },
           });
           if (session) {
-            if (session.user_id !== decoded.userId || session.revoked_at || session.expires_at <= new Date()) {
+            if (
+              session.user_id !== decoded.userId ||
+              session.revoked_at ||
+              session.expires_at <= new Date()
+            ) {
               return res.status(401).json({
                 ok: false,
                 error: 'Unauthorized',
@@ -94,15 +100,17 @@ async function authenticate(req, res, next) {
             req.sessionReference = session.session_reference;
           } else {
             // If session was cleared (e.g. dev reseed) but user exists and JWT signature is valid, re-anchor session
-            await prisma.loginSession.create({
-              data: {
-                user_id: decoded.userId,
-                session_reference: decoded.sessionReference,
-                ip_address: req.ip,
-                user_agent: req.headers['user-agent'],
-                expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000),
-              },
-            }).catch(() => {});
+            await prisma.loginSession
+              .create({
+                data: {
+                  user_id: decoded.userId,
+                  session_reference: decoded.sessionReference,
+                  ip_address: req.ip,
+                  user_agent: req.headers['user-agent'],
+                  expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000),
+                },
+              })
+              .catch(() => {});
             req.sessionReference = decoded.sessionReference;
           }
         } catch (dbErr) {
@@ -187,7 +195,9 @@ async function optionalAuthenticate(req, res, next) {
           resolvedUserId = session.user.id;
           req.session = session.session;
         }
-      } catch (_) {}
+      } catch (_) {
+        // Session lookup failed — fall through to JWT verification
+      }
     }
 
     if (!resolvedUserId) {
@@ -228,7 +238,9 @@ async function optionalAuthenticate(req, res, next) {
       } = user;
       req.user = safeUser;
     }
-  } catch (_) {}
+  } catch (_) {
+    // Authentication errors are non-fatal — unauthenticated request continues
+  }
   next();
 }
 

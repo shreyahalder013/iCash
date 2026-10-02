@@ -48,7 +48,11 @@ class TransactionController {
 
   static async correctCategory(req, res, next) {
     try {
-      const transaction = await SmartExpenseService.correctCategory(req.user.id, req.params.id, req.body.category);
+      const transaction = await SmartExpenseService.correctCategory(
+        req.user.id,
+        req.params.id,
+        req.body.category
+      );
       res.json({
         ok: true,
         transaction: {
@@ -58,7 +62,9 @@ class TransactionController {
           categoryUserCorrected: transaction.category_user_corrected,
         },
       });
-    } catch (err) { next(err); }
+    } catch (err) {
+      next(err);
+    }
   }
 
   static async depositMoney(req, res, next) {
@@ -67,12 +73,19 @@ class TransactionController {
       const accountId = req.body?.accountId || undefined;
       const method = String(req.body?.method || 'Cash Deposit').trim();
       if (!Number.isFinite(amount) || amount <= 0 || amount > 1000000) {
-        return res.status(400).json({ ok: false, message: 'Enter a deposit between ₹1 and ₹10,00,000.' });
+        return res
+          .status(400)
+          .json({ ok: false, message: 'Enter a deposit between ₹1 and ₹10,00,000.' });
       }
 
       const result = await TransactionService.processTransaction(
         req.user.id,
-        { accountId, transactionType: 'DEPOSIT', amount, description: `${method} — account deposit` },
+        {
+          accountId,
+          transactionType: 'DEPOSIT',
+          amount,
+          description: `${method} — account deposit`,
+        },
         req,
         { allowDeposit: true }
       );
@@ -92,13 +105,19 @@ class TransactionController {
   static async topUpDemoFunds(req, res, next) {
     try {
       if (process.env.NODE_ENV === 'production' && process.env.ALLOW_DEMO_TOPUP !== 'true') {
-        return res.status(404).json({ ok: false, error: 'NotFound', message: 'Endpoint not found.' });
+        return res
+          .status(404)
+          .json({ ok: false, error: 'NotFound', message: 'Endpoint not found.' });
       }
 
       const MAX_TOPUP = 10000;
       const rawAmount = Number(req.body.amount);
       if (isNaN(rawAmount) || rawAmount <= 0) {
-        return res.status(400).json({ ok: false, error: 'ValidationError', message: 'Amount must be a positive number.' });
+        return res.status(400).json({
+          ok: false,
+          error: 'ValidationError',
+          message: 'Amount must be a positive number.',
+        });
       }
       const amount = Math.min(rawAmount, MAX_TOPUP);
       if (rawAmount > MAX_TOPUP) {
