@@ -3,11 +3,19 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>iCash — Enterprise Biometric Banking</title>
+    <title>iCash — Digital Banking with Biometric Authentication</title>
     <meta
       name="description"
-      content="Next-generation digital banking secured with 128-dimensional biometric facial vectors, 256-bit encryption, and real-time fraud monitoring."
+      content="iCash is a prototype digital banking platform with facial biometric authentication and liveness verification. Manage accounts, transfers, and transactions in a demo environment."
     />
+    <meta name="robots" content="noindex, nofollow" />
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%232563eb'/><text x='5' y='23' font-family='Inter,sans-serif' font-weight='700' font-size='18' fill='white'>iC</text></svg>" />
+    <link rel="shortcut icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%232563eb'/><text x='5' y='23' font-family='Inter,sans-serif' font-weight='700' font-size='18' fill='white'>iC</text></svg>" />
+    <!-- Open Graph -->
+    <meta property="og:title" content="iCash — Digital Banking with Biometric Authentication" />
+    <meta property="og:description" content="A prototype digital banking platform demonstrating facial biometric authentication and liveness verification." />
+    <meta property="og:type" content="website" />
     <!-- CSP is set by backend Helmet middleware. Meta tag removed to avoid conflicts. -->
     <meta http-equiv="Permissions-Policy" content="camera=(self), microphone=(), geolocation=(), payment=(self)" />
     <meta http-equiv="X-Content-Type-Options" content="nosniff" />
@@ -19,16 +27,14 @@
     <link rel="stylesheet" href="style.css" />
     <!-- Critical inline CSS: guarantee a visible initial render before style.css fully parses -->
     <style>
-      html, body { background: #060912; color: #f8fafc; margin: 0; padding: 0; font-family: Inter, system-ui, sans-serif; }
+      html, body { background: #0a0f1a; color: #f1f5f9; margin: 0; padding: 0; font-family: Inter, system-ui, sans-serif; }
       .screen { display: none; }
       .screen.active { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; width: 100%; padding: 24px 20px; box-sizing: border-box; }
       #screen-dashboard.active { display: block; padding: 0; }
-      #canvas3d { position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: 0.25; }
       .app-wrapper { position: relative; z-index: 1; min-height: 100vh; }
     </style>
   </head>
   <body>
-    <canvas id="canvas3d"></canvas>
 
     <div class="app-wrapper">
       <!-- ============================================================
@@ -39,92 +45,67 @@
       <div class="screen active" id="screen-welcome">
         <div class="auth-container">
           <div class="auth-hero-info">
-            <div class="auth-badge">
-              <span class="dot-indicator"></span>
-              <span>BioGate 256-Bit Cryptographic Core</span>
+            <div class="demo-env-notice" role="note">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              <span>Prototype demo environment</span>
             </div>
-            <h1>Next-Generation Biometric Banking</h1>
+            <h1>Digital banking with biometric authentication.</h1>
             <p>
-              Experience passwordless, instant banking verified by encrypted facial biometric
-              vectors. Instant transfers, multi-account portfolios, and enterprise security.
+              iCash is a prototype banking platform. You can create an account, authenticate
+              using facial liveness verification, and perform simulated transactions.
+              This is not a regulated financial institution.
             </p>
 
-            <div style="display: flex; gap: 18px; margin-top: 28px; flex-wrap: wrap">
-              <div>
-                <div
-                  style="
-                    font-family: var(--font-mono);
-                    font-size: 11px;
-                    color: var(--text-faint);
-                    text-transform: uppercase;
-                  "
-                >
-                  Security Standard
-                </div>
-                <strong style="color: var(--text-main); font-size: 13.5px"
-                  >ISO 27001 Certified</strong
-                >
+            <div class="feature-list" style="margin-top: 28px;">
+              <div class="feature-item">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                <span>Facial liveness detection</span>
               </div>
-              <div style="width: 1px; background: var(--border)"></div>
-              <div>
-                <div
-                  style="
-                    font-family: var(--font-mono);
-                    font-size: 11px;
-                    color: var(--text-faint);
-                    text-transform: uppercase;
-                  "
-                >
-                  Identity Protocol
-                </div>
-                <strong style="color: var(--primary); font-size: 13.5px"
-                  >UIDAI e-KYC Verified</strong
-                >
+              <div class="feature-item">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                <span>Session-based authentication</span>
               </div>
-              <div style="width: 1px; background: var(--border)"></div>
-              <div>
-                <div
-                  style="
-                    font-family: var(--font-mono);
-                    font-size: 11px;
-                    color: var(--text-faint);
-                    text-transform: uppercase;
-                  "
-                >
-                  Encryption
-                </div>
-                <strong style="color: var(--text-main); font-size: 13.5px">AES-256 GCM</strong>
+              <div class="feature-item">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                <span>Simulated account transactions</span>
+              </div>
+              <div class="feature-item">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                <span>Assisted banking for senior citizens</span>
               </div>
             </div>
           </div>
 
           <div class="card card-narrow">
-            <div class="eyebrow">Digital Banking Gateway</div>
-            <h2>Access iCash Portal</h2>
+            <div class="eyebrow">iCash Portal</div>
+            <h2>Sign in or create an account</h2>
             <p class="lead">
-              Select your authentication mode to access your accounts or open a new digital wallet.
+              Select how you want to access your account.
             </p>
 
             <div class="choice-grid">
-              <div class="choice-box" onclick="startLogin()">
-                <div class="icon">👁️</div>
-                <h3>Customer Sign In</h3>
-                <p>Authenticate instantly via facial biometric match and liveness verification.</p>
+              <div class="choice-box" onclick="startLogin()" role="button" tabindex="0" aria-label="Sign in using biometric or PIN">
+                <div class="choice-icon-wrap" aria-hidden="true">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                </div>
+                <h3>Sign In</h3>
+                <p>Authenticate using facial liveness verification or Aadhaar reference and PIN.</p>
               </div>
-              <div class="choice-box" onclick="startRegistration()">
-                <div class="icon">✨</div>
+              <div class="choice-box" onclick="startRegistration()" role="button" tabindex="0" aria-label="Open a new account">
+                <div class="choice-icon-wrap" aria-hidden="true">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
+                </div>
                 <h3>Open Account</h3>
-                <p>Create a savings or merchant account with instant e-KYC onboarding.</p>
+                <p>Create a savings or merchant account with facial scan and Aadhaar reference.</p>
               </div>
-                        </div>
+            </div>
 
-            <!-- Voice Guided Mode toggle (Phase 10): controls spoken guidance for
-                 the whole authentication flow, persisted via the accessibility
-                 manager. Visual instructions remain available when OFF. -->
+
+            <!-- Voice Guided Mode toggle -->
             <div class="voice-mode-card" id="home-voice-mode-toggle" role="group" aria-label="Voice Guided Mode">
               <div class="voice-mode-copy">
                 <strong id="voice-mode-title-text">Voice Guided Mode</strong>
-                <span id="voice-mode-help-text">Spoken guidance for every authentication step.</span>
+                <span id="voice-mode-help-text">Spoken guidance for every step.</span>
               </div>
               <button
                 class="mini-btn"
@@ -132,16 +113,20 @@
                 onclick="toggleVoiceGuidance()"
                 aria-pressed="true"
                 aria-label="Turn Voice Guided Mode on or off"
-              >&#128266; ON</button>
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+                <span id="voice-mode-state-text">ON</span>
+              </button>
             </div>
 
             <div style="border-top: 1px solid var(--border); padding-top: 14px; margin-top: 14px;">
               <button
-                class="mini-btn"
-                style="width: 100%; justify-content: center; font-weight: 600; background: rgba(239, 68, 68, 0.08); border-color: rgba(239, 68, 68, 0.25); color: #f87171;"
+                class="btn btn-ghost btn-sm btn-block"
+                style="color: #f87171; border-color: rgba(239, 68, 68, 0.25); background: rgba(239, 68, 68, 0.06);"
                 onclick="openEmergencyWithdrawalModal()"
               >
-                🚨 Emergency &amp; Authorized Representative Cash Withdrawal
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                Authorized Representative Cash Withdrawal
               </button>
               <div style="text-align: center; margin-top: 12px;">
                 <button
@@ -224,7 +209,10 @@
                 "
               ></p>
               <div id="reg-senior-block" style="display: none; background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 8px; padding: 10px; margin-top: 8px; font-size: 11.5px; color: #fbbf24;">
-                👴 <strong>Senior Citizen Assisted Banking Active:</strong> Priority customer support, trusted contact authorization, and assisted banking mode enabled.
+            <div style="background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 8px; padding: 10px; margin-top: 8px; font-size: 11.5px; color: #fbbf24; line-height: 1.4;">
+                <strong>Senior Citizen Assisted Banking is enabled</strong> for your age group.
+                Priority support, trusted contact authorization, and assisted withdrawal mode will be available after registration.
+              </div>
               </div>
             </div>
             <div class="field">
@@ -281,8 +269,9 @@
               "
             >
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                <label style="color: var(--primary); font-size: 13px; font-weight: 600; margin: 0;">
-                  🛡️ Trusted Emergency Contacts &amp; Authorized Representatives
+                <label style="color: var(--text-main); font-size: 13px; font-weight: 600; margin: 0;">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle; margin-right: 4px;" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                  Trusted Emergency Contacts &amp; Authorized Representatives
                 </label>
                 <span style="font-size: 10px; color: var(--text-faint); font-family: var(--font-mono);">
                   Optional but Recommended
@@ -377,7 +366,7 @@
           </p>
 
           <div id="otp-sms-banner" style="display: none; background: rgba(45, 212, 191, 0.1); border: 1px solid var(--primary); border-radius: 8px; padding: 10px; margin-bottom: 16px; font-size: 13px; text-align: center;">
-            📲 Simulated SMS: Your verification code is <strong id="otp-sms-code" style="color: var(--primary); font-size: 16px; letter-spacing: 2px;">123456</strong>
+            Simulated SMS &mdash; Your verification code is <strong id="otp-sms-code" style="color: var(--primary); font-size: 16px; letter-spacing: 2px;">123456</strong>
           </div>
 
           <div class="field" style="text-align: center;">
@@ -429,8 +418,8 @@
             <div id="reg-blink-instruction" style="font-size: 13px; font-weight: 600; color: var(--primary); margin-bottom: 12px; min-height: 20px;">Align face within circle to enroll</div>
 
             <div class="thinking-trace" style="margin-bottom: 16px; justify-content: center">
-              <span>✦</span>
-              <span>128D Neural Vector Embedding &amp; Live Verification</span>
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              <span>Facial vector embedding &amp; liveness verification</span>
             </div>
 
             <div id="reg-cam-error" class="cam-fallback"></div>
@@ -517,7 +506,8 @@
 
             <!-- Camera permission explanation -->
             <div class="cam-permission-note" role="note">
-              &#128247; Camera access is required for biometric login. Frames are analyzed in
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0;margin-top:2px"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+              Camera access is required for biometric login. Frames are analyzed in
               real time for liveness and are <strong>never stored or recorded</strong>.
             </div>
 
@@ -758,7 +748,7 @@
                 <div class="brand-icon">iC</div>
                 <div class="brand-text">
                   <span class="brand-title">iCash</span>
-                  <span class="brand-subtitle">BIOMETRIC BANKING</span>
+                  <span class="brand-subtitle">DIGITAL BANKING</span>
                 </div>
               </a>
               <button
@@ -779,15 +769,15 @@
                   id="nav-item-dashboard"
                   onclick="switchView('dashboard')"
                 >
-                  <span class="nav-icon">📊</span>
+                  <span class="nav-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg></span>
                   <span>Dashboard</span>
                 </button>
                 <button class="nav-item" id="nav-item-accounts" onclick="switchView('accounts')">
-                  <span class="nav-icon">🏛️</span>
+                  <span class="nav-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg></span>
                   <span>Accounts</span>
                 </button>
                 <button class="nav-item" id="nav-item-transfers" onclick="switchView('transfers')">
-                  <span class="nav-icon">↗</span>
+                  <span class="nav-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span>
                   <span>Transfer Money</span>
                 </button>
                 <button
@@ -795,27 +785,27 @@
                   id="nav-item-transactions"
                   onclick="switchView('transactions')"
                 >
-                  <span class="nav-icon">📝</span>
+                  <span class="nav-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></span>
                   <span>Transactions</span>
                 </button>
                 <button class="nav-item" id="nav-item-payments" onclick="switchView('payments')">
-                  <span class="nav-icon">💳</span>
+                  <span class="nav-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg></span>
                   <span>Payments &amp; Bills</span>
                 </button>
                 <button class="nav-item" id="nav-item-security" onclick="switchView('security')">
-                  <span class="nav-icon">🛡️</span>
-                  <span>Biometric Security</span>
+                  <span class="nav-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span>
+                  <span>Security</span>
                 </button>
               </div>
 
               <div class="nav-group-title">Support</div>
               <div class="nav-group">
                 <button class="nav-item" id="nav-item-support" onclick="switchView('support')">
-                  <span class="nav-icon">💬</span>
+                  <span class="nav-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
                   <span>Help &amp; Support</span>
                 </button>
                 <button class="nav-item" id="nav-item-complaints" onclick="openModal('complaint')">
-                  <span class="nav-icon">⚖️</span>
+                  <span class="nav-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></span>
                   <span>File Grievance</span>
                 </button>
               </div>
@@ -823,11 +813,11 @@
 
             <div class="sidebar-footer">
               <button class="nav-item" id="nav-item-profile" onclick="switchView('profile')">
-                <span class="nav-icon">⚙️</span>
+                <span class="nav-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93A10 10 0 1 0 4.93 19.07 10 10 0 0 0 19.07 4.93z"/></svg></span>
                 <span>Settings &amp; Profile</span>
               </button>
               <button class="nav-item" onclick="logout()">
-                <span class="nav-icon">🚪</span>
+                <span class="nav-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></span>
                 <span>Sign Out</span>
               </button>
             </div>
@@ -838,7 +828,9 @@
             <!-- TOP NAVIGATION BAR -->
             <header class="top-navbar">
               <div class="top-left">
-                <button class="mobile-nav-toggle" onclick="toggleSidebar()">☰</button>
+                <button class="mobile-nav-toggle" onclick="toggleSidebar()" aria-label="Toggle navigation sidebar">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+                </button>
                 <div class="page-header-info">
                   <h2 id="top-page-title">Dashboard</h2>
                   <p id="top-page-subtitle">Your complete financial overview</p>
@@ -852,7 +844,10 @@
                   onclick="openCommandPalette()"
                   title="Press Cmd+K to search"
                 >
-                  <span>🔍 Search iCash…</span>
+                  <span aria-hidden="true">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                  </span>
+                  <span>Search iCash…</span>
                   <span class="kbd-shortcut">⌘K</span>
                 </button>
 
@@ -873,7 +868,7 @@
                   onclick="openDrawer('notifications')"
                   title="Notifications"
                 >
-                  <span>🔔</span>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
                   <span class="unread-badge"></span>
                 </button>
 
@@ -931,7 +926,7 @@
                 <div class="welcome-strip">
                   <div class="welcome-lead">
                     <h1 id="dash-greeting">Good afternoon, Customer</h1>
-                    <p>Your biometric session is active and encrypted with 256-bit security.</p>
+                    <p>Your session is active. All data shown is from the database.</p>
                   </div>
                   <div class="welcome-meta">
                     <span class="meta-pill" id="dash-masked-phone">Mobile: +91 ••••••••••</span>
@@ -957,19 +952,20 @@
                           id="balance-eye-btn"
                           onclick="toggleBalanceVisibility()"
                           title="Hide/Show Balance"
+                          aria-label="Toggle balance visibility"
                         >
-                          👁️
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                         </button>
                       </div>
                       <div class="balance-number-wrap">
-                        <div class="balance-amount" id="dash-primary-balance">₹25,000.00</div>
-                        <div class="balance-trend">↑ +₹2,450 this month</div>
+                        <div class="balance-amount" id="dash-primary-balance">₹—</div>
+                        <div class="balance-trend" id="dash-balance-trend" style="visibility: hidden;">Loading…</div>
                       </div>
                     </div>
 
                     <div class="balance-footer-meta">
                       <div class="balance-acc-badge">
-                        <span>🏛️</span>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
                         <strong id="dash-primary-bank-label">Bank account</strong>
                         <span style="color: var(--text-faint)" id="dash-primary-acc-mask"
                           >Account number unavailable</span
@@ -990,39 +986,46 @@
                     <div class="insight-tile">
                       <div class="insight-tile-header">
                         <span class="insight-tile-label">Money In (Monthly)</span>
-                        <span class="insight-tile-icon">↓</span>
+                        <span class="insight-tile-icon" aria-hidden="true">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
+                        </span>
                       </div>
-                      <div class="insight-tile-val" id="dash-money-in">₹12,500.00</div>
-                      <div class="insight-tile-trend pos">+8.4% vs last mo</div>
+                      <div class="insight-tile-val" id="dash-money-in">₹—</div>
+                      <div class="insight-tile-trend" id="dash-money-in-trend">&nbsp;</div>
                     </div>
 
                     <div class="insight-tile">
                       <div class="insight-tile-header">
                         <span class="insight-tile-label">Money Out (Spend)</span>
-                        <span class="insight-tile-icon">↑</span>
+                        <span class="insight-tile-icon" aria-hidden="true">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>
+                        </span>
                       </div>
-                      <div class="insight-tile-val" id="dash-money-out">₹7,250.00</div>
-                      <div class="insight-tile-trend neg">-3.2% vs budget</div>
+                      <div class="insight-tile-val" id="dash-money-out">₹—</div>
+                      <div class="insight-tile-trend" id="dash-money-out-trend">&nbsp;</div>
                     </div>
 
                     <div class="insight-tile">
                       <div class="insight-tile-header">
-                        <span class="insight-tile-label">Available Liquidity</span>
-                        <span class="insight-tile-icon">✨</span>
+                        <span class="insight-tile-label">Available Balance</span>
+                        <span class="insight-tile-icon" aria-hidden="true">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                        </span>
                       </div>
-                      <div class="insight-tile-val" id="dash-available-bal">₹25,000.00</div>
-                      <div class="insight-tile-trend" style="color: var(--primary)">
-                        Instant Biometric Access
+                      <div class="insight-tile-val" id="dash-available-bal">₹—</div>
+                      <div class="insight-tile-trend" style="color: var(--text-muted)">Primary account
                       </div>
                     </div>
 
                     <div class="insight-tile">
                       <div class="insight-tile-header">
-                        <span class="insight-tile-label">Linked Portfolios</span>
-                        <span class="insight-tile-icon">🏛️</span>
+                        <span class="insight-tile-label">Linked Accounts</span>
+                        <span class="insight-tile-icon" aria-hidden="true">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+                        </span>
                       </div>
-                      <div class="insight-tile-val" id="dash-linked-count">1 Account</div>
-                      <div class="insight-tile-trend">UIDAI e-KYC Verified</div>
+                      <div class="insight-tile-val" id="dash-linked-count">—</div>
+                      <div class="insight-tile-trend">Registered accounts</div>
                     </div>
                   </div>
                 </div>
@@ -1031,38 +1034,30 @@
                 <div class="quick-actions-card">
                   <div class="section-label-bar">
                     <h3>Quick Actions</h3>
-                    <span
-                      style="
-                        font-size: 11.5px;
-                        color: var(--text-muted);
-                        font-family: var(--font-mono);
-                      "
-                      >Real-Time Authorization</span
-                    >
                   </div>
                   <div class="action-buttons-row">
-                    <button class="action-tile-btn primary-action" onclick="openModal('send')">
-                      <span class="tile-icon">↗</span>
+                    <button class="action-tile-btn primary-action" onclick="openModal('send')" aria-label="Transfer funds">
+                      <span class="tile-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span>
                       <span>Transfer</span>
                     </button>
-                    <button class="action-tile-btn" onclick="openModal('deposit')">
-                      <span class="tile-icon">＋</span>
+                    <button class="action-tile-btn" onclick="openModal('deposit')" aria-label="Deposit money">
+                      <span class="tile-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg></span>
                       <span>Deposit</span>
                     </button>
-                    <button class="action-tile-btn" onclick="openModal('withdraw')">
-                      <span class="tile-icon">↓</span>
+                    <button class="action-tile-btn" onclick="openModal('withdraw')" aria-label="Withdraw cash">
+                      <span class="tile-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg></span>
                       <span>Withdraw</span>
                     </button>
-                    <button class="action-tile-btn" onclick="switchView('payments')">
-                      <span class="tile-icon">💳</span>
+                    <button class="action-tile-btn" onclick="switchView('payments')" aria-label="Pay bills">
+                      <span class="tile-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg></span>
                       <span>Pay Bills</span>
                     </button>
-                    <button class="action-tile-btn" onclick="openModal('payment-request')">
-                      <span class="tile-icon">📱</span>
+                    <button class="action-tile-btn" onclick="openModal('payment-request')" aria-label="Scan and pay">
+                      <span class="tile-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2" ry="2"/><path d="M7 2v20M2 7h5M2 12h5M2 17h5"/></svg></span>
                       <span>Scan &amp; Pay</span>
                     </button>
-                    <button class="action-tile-btn" onclick="exportStatement()">
-                      <span class="tile-icon">📄</span>
+                    <button class="action-tile-btn" onclick="exportStatement()" aria-label="Download statement">
+                      <span class="tile-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span>
                       <span>Statement</span>
                     </button>
                   </div>
@@ -1084,7 +1079,7 @@
                   <div class="table-header-toolbar">
                     <div class="table-title-wrap">
                       <h3>Recent Ledger Activity</h3>
-                      <p>Real-time banking transactions verified through biometric signatures</p>
+                      <p>Transactions recorded on this account</p>
                     </div>
                     <div style="display: flex; gap: 8px">
                       <button class="mini-btn" onclick="exportStatement()">Export CSV</button>
@@ -1304,10 +1299,10 @@
                ============================================================ -->
               <div class="portal-view" id="view-transfers">
                 <div class="card" style="max-width: 600px; margin: 0 auto">
-                  <div class="eyebrow">Instant Fund Settlement</div>
+                  <div class="eyebrow">Fund Transfer</div>
                   <h2>Transfer Funds</h2>
                   <p class="lead">
-                    Transfer money to verified beneficiaries with real-time biometric authorization.
+                    Transfer money to another account. Authorized via PIN or biometric verification.
                   </p>
 
                   <form id="form-transfer" onsubmit="event.preventDefault(); initiateTransferWorkflow();">
@@ -1385,7 +1380,7 @@
                       class="btn btn-indigo"
                       style="margin-top: 10px"
                     >
-                      Proceed to Biometric Authorization Gate &rarr;
+                      Proceed to Authorization &rarr;
                     </button>
                   </form>
                 </div>
@@ -1495,37 +1490,37 @@
               <div class="portal-view" id="view-security">
                 <div class="section-label-bar" style="margin-bottom: 18px">
                   <div>
-                    <h2>Biometric Security &amp; Anomaly Monitoring</h2>
+                    <h2>Security &amp; Authentication</h2>
                     <p style="color: var(--text-muted); font-size: 13px">
-                      Manage multi-factor facial descriptors, active devices, and session security.
+                      Manage active sessions, authentication events, and account security settings.
                     </p>
                   </div>
                 </div>
 
                 <div class="insight-metrics-grid" style="margin-bottom: 24px">
                   <div class="insight-tile">
-                    <span class="insight-tile-label">BioGate Engine</span>
-                    <div class="insight-tile-val" style="color: var(--primary)">
-                      Active · Enrolled
+                    <span class="insight-tile-label">Biometric Auth</span>
+                    <div class="insight-tile-val" style="color: var(--success)">
+                      Enrolled
                     </div>
-                    <div class="insight-tile-trend pos">128D Embeddings Verified</div>
+                    <div class="insight-tile-trend pos">Face vector stored</div>
                   </div>
                   <div class="insight-tile">
-                    <span class="insight-tile-label">Session Protection</span>
-                    <div class="insight-tile-val">256-Bit SSL/TLS</div>
-                    <div class="insight-tile-trend">HttpOnly Cookie Isolated</div>
+                    <span class="insight-tile-label">Session Type</span>
+                    <div class="insight-tile-val">HTTPS / TLS</div>
+                    <div class="insight-tile-trend">HTTP-only cookie session</div>
                   </div>
                   <div class="insight-tile">
-                    <span class="insight-tile-label">Duress Protection</span>
+                    <span class="insight-tile-label">Duress PIN</span>
                     <div class="insight-tile-val" style="color: var(--text-main)">
-                      Silent Alarm Ready
+                      <span id="sec-duress-status">Not set</span>
                     </div>
-                    <div class="insight-tile-trend">Emergency PIN Configured</div>
+                    <div class="insight-tile-trend">Silent alarm trigger</div>
                   </div>
                   <div class="insight-tile">
-                    <span class="insight-tile-label">Active Sessions</span>
-                    <div class="insight-tile-val">1 Connected</div>
-                    <div class="insight-tile-trend">Current Windows Device</div>
+                    <span class="insight-tile-label">Active Session</span>
+                    <div class="insight-tile-val">1 device</div>
+                    <div class="insight-tile-trend">Current session</div>
                   </div>
                 </div>
 
@@ -1605,9 +1600,9 @@
               <div class="portal-view" id="view-profile">
                 <div class="card" style="max-width: 640px; margin: 0 auto">
                   <div class="eyebrow">Customer Account Information</div>
-                  <h2>Profile &amp; Security Preferences</h2>
+                  <h2>Profile &amp; Settings</h2>
                   <p class="lead">
-                    View your registered profile, UIDAI e-KYC reference, and banking settings.
+                    View your registered profile, Aadhaar reference, and account preferences.
                   </p>
 
                   <div class="drawer-detail-card" style="margin-bottom: 18px">
@@ -1691,7 +1686,16 @@
                 </div>
               </div>
             </div>
-          </main>
+
+             <!-- APP FOOTER -->
+             <footer class="app-footer" role="contentinfo" aria-label="Site footer">
+               <span>iCash &mdash; Prototype demo. Not a regulated financial institution.</span>
+               <div style="display: flex; gap: 16px;">
+                 <a href="#" onclick="event.preventDefault(); goTo('screen-privacy');">Privacy</a>
+                 <a href="#" onclick="event.preventDefault(); goTo('screen-terms');">Terms</a>
+               </div>
+             </footer>
+           </main>
         </div>
       </div>
     </div>
@@ -1743,8 +1747,8 @@
             </div>
             <div class="drawer-field-row">
               <span class="drawer-field-label">Security Authorization</span>
-              <span class="drawer-field-val" style="color: var(--primary)"
-                >Biometric Vector Match ✓</span
+              <span class="drawer-field-val" style="color: var(--success)"
+                >Verified &#10003;</span
               >
             </div>
           </div>
@@ -1778,7 +1782,7 @@
             </div>
             <div class="drawer-field-row">
               <span class="drawer-field-label">Session Encryption</span>
-              <span class="drawer-field-val">AES-256 GCM</span>
+              <span class="drawer-field-val">HTTPS / TLS</span>
             </div>
             <div class="drawer-field-row">
               <span class="drawer-field-label">Last Verification</span>
@@ -1818,12 +1822,12 @@
         <div class="drawer-body" id="notifications-feed">
           <div class="drawer-detail-card">
             <div
-              style="font-weight: 600; font-size: 13px; color: var(--primary); margin-bottom: 2px"
+              style="font-weight: 600; font-size: 13px; color: var(--success); margin-bottom: 2px"
             >
-              Security Protected
+              Session Active
             </div>
             <p style="font-size: 12px; color: var(--text-muted); margin: 0">
-              Active session initialized with biometric validation.
+              You are signed in. Idle sessions expire automatically after 10 minutes.
             </p>
             <span
               style="
@@ -1834,26 +1838,6 @@
                 margin-top: 6px;
               "
               >Just now</span
-            >
-          </div>
-          <div class="drawer-detail-card">
-            <div
-              style="font-weight: 600; font-size: 13px; color: var(--success); margin-bottom: 2px"
-            >
-              Account Verified
-            </div>
-            <p style="font-size: 12px; color: var(--text-muted); margin: 0">
-              UIDAI e-KYC reference token verified.
-            </p>
-            <span
-              style="
-                font-size: 10.5px;
-                color: var(--text-faint);
-                font-family: var(--font-mono);
-                display: block;
-                margin-top: 6px;
-              "
-              >Today</span
             >
           </div>
         </div>
@@ -2705,6 +2689,96 @@
           <div class="btn-row" style="margin-top: 18px;">
             <button class="btn btn-ghost" onclick="closeAccessibleConfirm()">Cancel</button>
             <button class="btn btn-primary" id="btn-acc-confirm-proceed">Confirm</button>
+          </div>
+        </div>
+      </div>
+
+    <!-- SCREEN: PRIVACY POLICY -->
+      <div class="screen" id="screen-privacy">
+        <div class="card card-narrow" style="max-width: 600px; text-align: left; margin: 40px auto;">
+          <button type="button" class="link-btn" style="margin-bottom: 16px; font-size: 12px;" onclick="history.back(); goTo('screen-welcome');">
+            &larr; Back
+          </button>
+          <div class="eyebrow">Legal</div>
+          <h2>Privacy Policy</h2>
+          <p class="lead" style="margin-bottom: 20px;">Last updated: October 2024</p>
+
+          <div style="display: flex; flex-direction: column; gap: 16px; font-size: 13px; line-height: 1.6; color: var(--text-muted);">
+            <div>
+              <strong style="color: var(--text-main); display: block; margin-bottom: 4px;">1. What is iCash?</strong>
+              iCash is a prototype demonstration of a biometric banking interface. It is <strong>not a regulated financial institution</strong>. 
+              No real money is handled. Accounts, transactions, and balances exist in a demo database for testing purposes only.
+            </div>
+            <div>
+              <strong style="color: var(--text-main); display: block; margin-bottom: 4px;">2. Data We Collect</strong>
+              When you register, we store: your name, Aadhaar last 4 digits (as a reference identifier, not verified with UIDAI), 
+              mobile number, email address, date of birth, and a facial descriptor vector for biometric authentication. 
+              Camera frames sent for liveness detection are processed in real-time and are <strong>not stored or recorded</strong>.
+            </div>
+            <div>
+              <strong style="color: var(--text-main); display: block; margin-bottom: 4px;">3. How We Use Your Data</strong>
+              Data is used solely to authenticate you within this prototype and demonstrate banking functionality. 
+              We do not share your data with third parties. We do not sell data. This is a demo system.
+            </div>
+            <div>
+              <strong style="color: var(--text-main); display: block; margin-bottom: 4px;">4. Data Retention</strong>
+              Data is stored on Render cloud infrastructure with PostgreSQL. You may delete your account at any time from Profile &amp; Settings, 
+              which permanently removes all stored data.
+            </div>
+            <div>
+              <strong style="color: var(--text-main); display: block; margin-bottom: 4px;">5. Security</strong>
+              Sessions use HTTP-only cookies. Passwords are hashed. Communication is over HTTPS/TLS. 
+              This is a prototype implementation and has not undergone a formal security audit.
+            </div>
+            <div>
+              <strong style="color: var(--text-main); display: block; margin-bottom: 4px;">6. Contact</strong>
+              This is a prototype project. For questions, raise a grievance ticket within the application.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SCREEN: TERMS OF SERVICE -->
+      <div class="screen" id="screen-terms">
+        <div class="card card-narrow" style="max-width: 600px; text-align: left; margin: 40px auto;">
+          <button type="button" class="link-btn" style="margin-bottom: 16px; font-size: 12px;" onclick="history.back(); goTo('screen-welcome');">
+            &larr; Back
+          </button>
+          <div class="eyebrow">Legal</div>
+          <h2>Terms of Service</h2>
+          <p class="lead" style="margin-bottom: 20px;">Last updated: October 2024</p>
+
+          <div style="display: flex; flex-direction: column; gap: 16px; font-size: 13px; line-height: 1.6; color: var(--text-muted);">
+            <div>
+              <strong style="color: var(--text-main); display: block; margin-bottom: 4px;">1. Nature of Service</strong>
+              iCash is a <strong>prototype banking demonstration system</strong>. It is not a licensed bank, payment system operator, 
+              or regulated financial institution. No actual financial transactions occur. All balances and transactions are simulated.
+            </div>
+            <div>
+              <strong style="color: var(--text-main); display: block; margin-bottom: 4px;">2. Acceptable Use</strong>
+              You may use iCash for evaluation, testing, and demonstration purposes. You must not attempt to use it for real financial 
+              transactions, or misrepresent it as a regulated service to others.
+            </div>
+            <div>
+              <strong style="color: var(--text-main); display: block; margin-bottom: 4px;">3. No Financial Advice</strong>
+              Nothing in this application constitutes financial, legal, or regulatory advice. Consult a qualified professional 
+              for financial guidance.
+            </div>
+            <div>
+              <strong style="color: var(--text-main); display: block; margin-bottom: 4px;">4. Aadhaar Usage Disclaimer</strong>
+              iCash uses the last 4 digits of your Aadhaar number as a local reference identifier only. 
+              <strong>iCash is not connected to UIDAI, does not perform e-KYC verification, and does not verify Aadhaar numbers.</strong> 
+              This is a prototype identifier only.
+            </div>
+            <div>
+              <strong style="color: var(--text-main); display: block; margin-bottom: 4px;">5. No Warranty</strong>
+              This service is provided &ldquo;as is&rdquo; without warranty of any kind. The developers are not liable for 
+              any loss, disruption, or data issues arising from use of this prototype.
+            </div>
+            <div>
+              <strong style="color: var(--text-main); display: block; margin-bottom: 4px;">6. Account Termination</strong>
+              You may delete your account at any time. We reserve the right to terminate demo accounts without notice.
+            </div>
           </div>
         </div>
       </div>
