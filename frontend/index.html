@@ -460,137 +460,233 @@
       <!-- SCREEN: LOGIN FACE SCAN (SERVER-AUTHORITATIVE 6-STAGE UX) -->
       <div class="screen" id="screen-login-scan">
         <div class="scan-wrap">
-          <div class="card card-narrow" style="padding: 24px; text-align: center; position: relative;">
+          <div class="biometric-auth-card" role="main" aria-label="Biometric Authentication">
 
-                        <!-- Top Navigation Controls Bar -->
-            <div class="scan-top-controls" role="group" aria-label="Authentication options">
+            <!-- Application Header -->
+            <header class="auth-header" role="banner">
+              <div class="auth-header-brand">
+                <svg class="brand-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
+                  <path d="M2 17l10 5 10-5"></path>
+                  <path d="M2 12l10 5 10-5"></path>
+                </svg>
+                <div class="brand-text">
+                  <span class="brand-title">iCash</span>
+                  <span class="brand-subtitle">Biometric Banking</span>
+                </div>
+              </div>
+              <div class="auth-header-actions" role="group" aria-label="Authentication options">
+                <button
+                  class="header-action-btn"
+                  id="login-voice-btn"
+                  onclick="toggleVoiceGuidance()"
+                  aria-label="Toggle Voice Guided Mode"
+                  aria-pressed="true"
+                  title="Voice Guided Mode — reads each verification step aloud"
+                >
+                  <svg class="action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path></svg>
+                  <span class="action-label">Voice Mode</span>
+                  <span class="action-state" id="login-voice-state">ON</span>
+                </button>
+                <button
+                  class="header-action-btn"
+                  id="login-accessibility-btn"
+                  onclick="openModal('accessibility-info')"
+                  aria-label="Accessibility Options"
+                  title="Accessibility"
+                >
+                  <svg class="action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="16" cy="4" r="1"></circle><path d="M18 19V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v13"></path><path d="M2 17h20"></path><path d="M7 17v5"></path><path d="M17 17v5"></path></svg>
+                  <span class="action-label">Accessibility</span>
+                </button>
+                <button
+                  class="header-action-btn"
+                  id="login-help-btn"
+                  onclick="openModal('ai-help')"
+                  aria-label="Help Assistant"
+                  title="Help"
+                >
+                  <svg class="action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                  <span class="action-label">Help</span>
+                </button>
+                <button
+                  class="header-action-btn header-action-btn-danger"
+                  id="login-logout-btn"
+                  onclick="cancelLoginScan(); logout();"
+                  aria-label="Cancel and Logout"
+                  title="Cancel & Logout"
+                >
+                  <svg class="action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+                  <span class="action-label">Logout</span>
+                </button>
+              </div>
+            </header>
+
+            <!-- Main Authentication Panel -->
+            <div class="auth-panel">
+              <div class="auth-panel-header">
+                <h1>Biometric Authentication</h1>
+                <p class="auth-subtitle">Verify your identity</p>
+                <p class="auth-description">Follow the steps below to securely verify your identity. Your camera is used only during this verification session.</p>
+              </div>
+
+              <!-- Camera Preview with Face Guide -->
+              <div class="camera-container" role="region" aria-label="Camera preview with face positioning guide">
+                <video id="login-video" autoplay muted playsinline aria-label="Camera preview"></video>
+                <canvas id="scan-ring-canvas-login" class="scan-ring-canvas" aria-hidden="true"></canvas>
+                <canvas id="login-overlay-canvas" class="overlay-canvas" aria-hidden="true"></canvas>
+                <div class="face-guide" id="face-guide" aria-hidden="true">
+                  <div class="face-guide-frame"></div>
+                  <div class="face-guide-corners">
+                    <div class="corner tl"></div>
+                    <div class="corner tr"></div>
+                    <div class="corner bl"></div>
+                    <div class="corner br"></div>
+                  </div>
+                </div>
+                <div class="camera-status-overlay" id="camera-status-overlay" aria-live="polite">
+                  <span class="status-text" id="camera-status-text">Initializing camera…</span>
+                </div>
+              </div>
+
+              <!-- Dynamic Instruction Banner -->
+              <div id="login-instruction-banner" class="instruction-banner info" role="status" aria-live="assertive" aria-atomic="true">
+                <span id="login-instruction-text">Center your face in the frame to begin</span>
+              </div>
+
+              <!-- 6-Stage Verification Progress -->
+              <div class="verification-progress" aria-label="Biometric verification progress">
+                <div class="progress-header">
+                  <h2>Verification Progress</h2>
+                </div>
+                <ol class="progress-steps" id="login-progress-steps" role="list">
+                  <li class="progress-step is-pending" id="login-ps-1" data-step="1">
+                    <span class="step-indicator" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle></svg></span>
+                    <div class="step-content">
+                      <span class="step-label">Center Face</span>
+                      <span class="step-detail" id="login-ps-1-detail">Position your face inside the guide</span>
+                    </div>
+                    <span class="step-status" aria-hidden="true"></span>
+                  </li>
+                  <li class="progress-step is-pending" id="login-ps-2" data-step="2">
+                    <span class="step-indicator" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle></svg></span>
+                    <div class="step-content">
+                      <span class="step-label">Eyes Detected</span>
+                      <span class="step-detail" id="login-ps-2-detail">Keep both eyes visible</span>
+                    </div>
+                    <span class="step-status" aria-hidden="true"></span>
+                  </li>
+                  <li class="progress-step is-pending" id="login-ps-3" data-step="3">
+                    <span class="step-indicator" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle></svg></span>
+                    <div class="step-content">
+                      <span class="step-label">Live Check</span>
+                      <span class="step-detail" id="login-ps-3-detail">Stay still for calibration</span>
+                    </div>
+                    <span class="step-status" aria-hidden="true"></span>
+                  </li>
+                  <li class="progress-step is-pending" id="login-ps-4" data-step="4">
+                    <span class="step-indicator" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle></svg></span>
+                    <div class="step-content">
+                      <span class="step-label">Blink Challenge</span>
+                      <span class="step-detail" id="login-ps-4-detail">Blink when prompted</span>
+                    </div>
+                    <span class="step-status" aria-hidden="true"></span>
+                  </li>
+                  <li class="progress-step is-pending" id="login-ps-5" data-step="5">
+                    <span class="step-indicator" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle></svg></span>
+                    <div class="step-content">
+                      <span class="step-label">Identity Match</span>
+                      <span class="step-detail" id="login-ps-5-detail">Matching enrolled identity</span>
+                    </div>
+                    <span class="step-status" aria-hidden="true"></span>
+                  </li>
+                  <li class="progress-step is-pending" id="login-ps-6" data-step="6">
+                    <span class="step-indicator" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle></svg></span>
+                    <div class="step-content">
+                      <span class="step-label">Authorized</span>
+                      <span class="step-detail" id="login-ps-6-detail">Establishing secure session</span>
+                    </div>
+                    <span class="step-status" aria-hidden="true"></span>
+                  </li>
+                </ol>
+              </div>
+
+              <!-- Live Status Panel -->
+              <div class="status-panel" id="login-status-panel" aria-label="Live biometric status" role="region" aria-live="polite">
+                <div class="status-row">
+                  <span class="status-label">Camera</span>
+                  <span class="status-value" id="status-camera">Initializing</span>
+                </div>
+                <div class="status-row">
+                  <span class="status-label">Face</span>
+                  <span class="status-value" id="status-face">Not detected</span>
+                </div>
+                <div class="status-row">
+                  <span class="status-label">Eyes</span>
+                  <span class="status-value" id="status-eyes">Not detected</span>
+                </div>
+                <div class="status-row">
+                  <span class="status-label">Liveness</span>
+                  <span class="status-value" id="status-liveness">Waiting</span>
+                </div>
+                <div class="status-row">
+                  <span class="status-label">Blink</span>
+                  <span class="status-value" id="status-blink">Waiting</span>
+                </div>
+                <div class="status-row">
+                  <span class="status-label">Identity</span>
+                  <span class="status-value" id="status-identity">Not checked</span>
+                </div>
+              </div>
+
+              <!-- Debug Panel (Development Only) -->
+              <div class="debug-panel" id="login-debug-panel" hidden aria-label="Debug diagnostics">
+                <details>
+                  <summary>Debug Diagnostics</summary>
+                  <div class="debug-grid">
+                    <div><span class="debug-label">Camera:</span> <span class="debug-value" id="dbg-camera">—</span></div>
+                    <div><span class="debug-label">Resolution:</span> <span class="debug-value" id="dbg-resolution">—</span></div>
+                    <div><span class="debug-label">Faces:</span> <span class="debug-value" id="dbg-faces">—</span></div>
+                    <div><span class="debug-label">Face Conf:</span> <span class="debug-value" id="dbg-face-conf">—</span></div>
+                    <div><span class="debug-label">Face Centered:</span> <span class="debug-value" id="dbg-face-centered">—</span></div>
+                    <div><span class="debug-label">Left Eye:</span> <span class="debug-value" id="dbg-left-eye">—</span></div>
+                    <div><span class="debug-label">Right Eye:</span> <span class="debug-value" id="dbg-right-eye">—</span></div>
+                    <div><span class="debug-label">Avg EAR:</span> <span class="debug-value" id="dbg-avg-ear">—</span></div>
+                    <div><span class="debug-label">Blink State:</span> <span class="debug-value" id="dbg-blink-state">—</span></div>
+                    <div><span class="debug-label">Blink Count:</span> <span class="debug-value" id="dbg-blink-count">—</span></div>
+                    <div><span class="debug-label">Baseline EAR:</span> <span class="debug-value" id="dbg-baseline">—</span></div>
+                    <div><span class="debug-label">Detection FPS:</span> <span class="debug-value" id="dbg-fps">—</span></div>
+                  </div>
+                </details>
+              </div>
+
+              <div id="login-cam-error" class="cam-fallback" role="alert"></div>
+
+              <div class="btn-row" style="justify-content: center;">
+                <button class="btn btn-ghost" onclick="cancelLoginScan()" aria-label="Cancel biometric authentication">Cancel</button>
+                <button
+                  class="btn btn-ghost"
+                  id="login-retry-cam-btn"
+                  style="display: none"
+                  onclick="beginLoginScan()"
+                  aria-label="Try the liveness check again"
+                >Try Again</button>
+              </div>
+
               <button
-                class="top-control-btn"
-                id="login-voice-btn"
-                onclick="toggleVoiceGuidance()"
-                aria-label="Toggle Voice Guided Mode"
-                aria-pressed="true"
-                title="Voice Guided Mode — reads each verification step aloud"
+                type="button"
+                class="link-btn"
+                style="margin-top: 14px; width: 100%; text-align: center; font-size: 12px; color: var(--text-muted);"
+                onclick="cancelLoginScan(); goTo('screen-pin-login');"
               >
-                <span class="top-control-icon" aria-hidden="true">&#127908;</span>
-                <span class="top-control-label">Voice Mode</span>
-                <span class="top-control-state" id="login-voice-state">ON</span>
+                Camera unavailable? Sign in with Aadhaar & PIN &rarr;
               </button>
-              <button
-                class="top-control-btn"
-                id="login-accessibility-btn"
-                onclick="openModal('accessibility-info')"
-                aria-label="Accessibility Options"
-                title="Accessibility"
-              >
-                <span class="top-control-icon" aria-hidden="true">&#9855;</span>
-                <span class="top-control-label">Accessibility</span>
-              </button>
-              <button
-                class="top-control-btn"
-                id="login-help-btn"
-                onclick="openModal('ai-help')"
-                aria-label="AI Help Assistant"
-                title="AI Help Assistant"
-              >
-                <span class="top-control-icon" aria-hidden="true">&#10067;</span>
-                <span class="top-control-label">Help</span>
-              </button>
-              <button
-                class="top-control-btn top-control-btn-danger"
-                id="login-logout-btn"
-                onclick="cancelLoginScan(); logout();"
-                aria-label="Cancel and Logout"
-                title="Cancel & Logout"
-              >
-                <span class="top-control-icon" aria-hidden="true">&#128682;</span>
-                <span class="top-control-label">Logout</span>
-              </button>
+
             </div>
-
-            <div class="eyebrow">Biometric Authentication</div>
-            <h2 style="margin-bottom: 8px;">Face &amp; Liveness Verification</h2>
-            <p class="lead" style="margin-bottom: 14px; font-size: 13px;">
-              Center your face, then blink naturally when prompted. Every stage below is
-              verified by the iCash secure server &mdash; nothing is assumed.
-            </p>
-
-            <!-- Camera permission explanation -->
-            <div class="cam-permission-note" role="note">
-              &#128247; Camera access is required for biometric login. Frames are analyzed in
-              real time for liveness and are <strong>never stored or recorded</strong>.
-            </div>
-
-            <!-- Dynamic Server Instruction Banner -->
-            <div id="login-instruction-banner" class="scan-instruction-banner info" role="status" aria-live="assertive" aria-atomic="true">
-              <span id="login-instruction-text">Center your face in the scan frame to begin</span>
-            </div>
-
-            <!-- Camera Preview -->
-            <div class="scan-frame" style="margin: 10px auto 10px; position: relative;">
-              <video id="login-video" autoplay muted playsinline aria-label="Camera preview"></video>
-              <canvas id="scan-ring-canvas-login" class="scan-ring-canvas" aria-hidden="true"></canvas>
-              <div class="scan-status" id="login-scan-status" role="status">Initializing&#8230;</div>
-            </div>
-
-            <!-- 6-Stage Liveness Progress — server-evidence driven only.
-                 A stage only shows ✓ after the underlying condition genuinely
-                 passed on the server; stages 5 & 6 require real verification
-                 results (face match, session establishment). -->
-            <ol class="liveness-steps" id="login-liveness-steps" aria-label="Verification progress">
-              <li class="liveness-step is-pending" id="login-ls-1">
-                <span class="ls-icon" aria-hidden="true">1</span>
-                <span class="ls-label">Center Face</span>
-              </li>
-              <li class="liveness-step is-pending" id="login-ls-2">
-                <span class="ls-icon" aria-hidden="true">2</span>
-                <span class="ls-label">Eyes Detected</span>
-              </li>
-              <li class="liveness-step is-pending" id="login-ls-3">
-                <span class="ls-icon" aria-hidden="true">3</span>
-                <span class="ls-label">Live Check</span>
-              </li>
-              <li class="liveness-step is-pending" id="login-ls-4">
-                <span class="ls-icon" aria-hidden="true">4</span>
-                <span class="ls-label">Blink Challenge</span>
-              </li>
-              <li class="liveness-step is-pending" id="login-ls-5">
-                <span class="ls-icon" aria-hidden="true">5</span>
-                <span class="ls-label">Identity Match</span>
-              </li>
-              <li class="liveness-step is-pending" id="login-ls-6">
-                <span class="ls-icon" aria-hidden="true">6</span>
-                <span class="ls-label">Authorized</span>
-              </li>
-            </ol>
-
-            <div id="login-cam-error" class="cam-fallback" role="alert"></div>
-
-            <div class="btn-row" style="margin-top: 14px; justify-content: center;">
-              <button class="btn btn-ghost" onclick="cancelLoginScan()" aria-label="Cancel biometric authentication">Cancel</button>
-              <button
-                class="btn btn-ghost"
-                id="login-retry-cam-btn"
-                style="display: none"
-                onclick="beginLoginScan()"
-                aria-label="Try the liveness check again"
-              >Try Again</button>
-            </div>
-
-            <button
-              type="button"
-              class="link-btn"
-              style="margin-top: 14px; width: 100%; text-align: center; font-size: 12px; color: var(--text-muted);"
-              onclick="cancelLoginScan(); goTo('screen-pin-login');"
-            >
-              Camera unavailable? Sign in with Aadhaar &amp; PIN &rarr;
-            </button>
-
           </div>
         </div>
       </div>
 
-      <!-- SCREEN: AADHAAR IDENTITY LOOKUP -->
+      <!-- SCREEN: AADHAAR IDENTITY LOOKUP --><!-- SCREEN: AADHAAR IDENTITY LOOKUP -->
       <div class="screen" id="screen-login-aadhaar">
         <div class="card card-narrow">
           <div class="eyebrow">Step 1 of 3 · Identity Lookup</div>

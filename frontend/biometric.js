@@ -18,6 +18,12 @@ const FACEAPI_MODEL_URL_CDN = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api
 const EAR_DEBUG_ENABLED =
   typeof location !== 'undefined' && new URLSearchParams(location.search).get('debug') === 'ear';
 
+// Show the debug diagnostics panel with ?debug=bio
+const BIO_DEBUG_ENABLED =
+  typeof location !== 'undefined' &&
+  (new URLSearchParams(location.search).get('debug') === 'bio' ||
+    new URLSearchParams(location.search).get('debug') === 'ear');
+
 // External functions defined in script.js (loaded together in browser);
 // their global names are declared in .eslintrc.json for the linter.
 
@@ -568,34 +574,62 @@ const LIVENESS_STEP_LABELS = {
  * error → cross ✗. Status is never color-only (icon + ARIA state change too).
  */
 function setLivenessStepStatus(prefix, step, status, detail) {
-  const el = document.getElementById(`${prefix}-ls-${step}`);
+  // HTML uses 'login-ps-N' / 'reg-ps-N' id pattern
+  const el = document.getElementById(`${prefix}-ps-${step}`);
   if (!el) return;
   el.dataset.status = status;
   el.classList.remove('is-pending', 'is-active', 'is-done', 'is-error');
   el.classList.add(`is-${status}`);
 
-  const icon = el.querySelector('.ls-icon');
-  if (icon) {
-    if (status === 'done') icon.textContent = '✓';
-    else if (status === 'error') icon.textContent = '✕';
-    else icon.textContent = String(step);
+  // Update the SVG indicator inside .step-indicator
+  const indicator = el.querySelector('.step-indicator');
+  if (indicator) {
+    if (status === 'done') {
+      indicator.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+    } else if (status === 'error') {
+      indicator.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`;
+    } else if (status === 'active') {
+      indicator.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="5" fill="currentColor"></circle></svg>`;
+    } else {
+      indicator.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle></svg>`;
+    }
   }
 
-  const label = el.querySelector('.ls-label');
-  const baseLabel = LIVENESS_STEP_LABELS[step] || `Step ${step}`;
-  if (label) label.textContent = detail || baseLabel;
+  // Update detail text in .step-detail (below the label)
+  const detailEl = el.querySelector('.step-detail');
+  if (detailEl && detail) detailEl.textContent = detail;
 
+  const baseLabel = LIVENESS_STEP_LABELS[step] || `Step ${step}`;
   el.setAttribute(
     'aria-label',
     `${detail || baseLabel} — ${
-      status === 'done' ? 'complete' : status === 'active' ? 'in progress' : 'not started'
+      status === 'done'
+        ? 'complete'
+        : status === 'active'
+          ? 'in progress'
+          : status === 'error'
+            ? 'failed'
+            : 'not started'
     }`
   );
 }
 
-/** Resets all six steps to pending. */
+/** Resets all six steps to pending and restores default detail text. */
+const LIVENESS_STEP_DEFAULTS = {
+  1: 'Position your face inside the guide',
+  2: 'Keep both eyes visible',
+  3: 'Stay still for calibration',
+  4: 'Blink when prompted',
+  5: 'Matching enrolled identity',
+  6: 'Establishing secure session',
+};
 function resetLivenessSteps(prefix) {
-  for (let s = 1; s <= 6; s++) setLivenessStepStatus(prefix, s, 'pending');
+  for (let s = 1; s <= 6; s++) {
+    setLivenessStepStatus(prefix, s, 'pending');
+    // Also restore the detail text to its default
+    const detailEl = document.getElementById(`${prefix}-ps-${s}-detail`);
+    if (detailEl && LIVENESS_STEP_DEFAULTS[s]) detailEl.textContent = LIVENESS_STEP_DEFAULTS[s];
+  }
 }
 
 /**
@@ -604,18 +638,32 @@ function resetLivenessSteps(prefix) {
  * Stages below the reported stage have genuinely passed on the server
  * (face found → landmarks localized → baseline calibrated → blinks counted).
  */
+const LIVENESS_STAGE_DONE_LABELS = {
+  1: 'Face centered ✓',
+  2: 'Eyes detected ✓',
+  3: 'Live check passed ✓',
+  4: 'Blink challenge complete ✓',
+};
+const LIVENESS_STAGE_ACTIVE_DETAILS = {
+  1: 'Position your face inside the guide',
+  2: 'Keep both eyes visible and open',
+  3: 'Stay still — checking live interaction',
+  4: 'Blink when prompted',
+};
 function markServerLivenessStage(prefix, serverStage, blinkCount, requiredBlinks) {
   const capped = Math.min(Math.max(Number(serverStage) || 1, 1), 4);
   for (let s = 1; s <= 4; s++) {
-    setLivenessStepStatus(prefix, s, s < capped ? 'done' : s === capped ? 'active' : 'pending');
-  }
-  if (blinkCount !== undefined && requiredBlinks) {
-    setLivenessStepStatus(
-      prefix,
-      4,
-      capped > 4 ? 'done' : 'active',
-      `Blink Challenge (${blinkCount}/${requiredBlinks})`
-    );
+    if (s < capped) {
+      setLivenessStepStatus(prefix, s, 'done', LIVENESS_STAGE_DONE_LABELS[s]);
+    } else if (s === capped) {
+      const activeDetail =
+        s === 4 && typeof blinkCount === 'number' && requiredBlinks
+          ? `Blinks detected: ${blinkCount} / ${requiredBlinks}`
+          : LIVENESS_STAGE_ACTIVE_DETAILS[s];
+      setLivenessStepStatus(prefix, s, 'active', activeDetail);
+    } else {
+      setLivenessStepStatus(prefix, s, 'pending');
+    }
   }
 }
 
@@ -630,7 +678,8 @@ function setBannerStatus(prefix, text, stateClass = 'info', speak = true) {
   const banner = document.getElementById(`${prefix}-instruction-banner`);
   const textEl = document.getElementById(`${prefix}-instruction-text`);
   if (textEl) textEl.textContent = text;
-  if (banner) banner.className = `scan-instruction-banner ${stateClass}`;
+  // Correct class: 'instruction-banner' (not 'scan-instruction-banner')
+  if (banner) banner.className = `instruction-banner ${stateClass}`;
 
   const statusEl = document.getElementById(`${prefix}-scan-status`);
   if (statusEl) {
@@ -858,7 +907,7 @@ async function beginLoginScan() {
   const offCtx = offCanvas.getContext('2d');
 
   _loginActive = true;
-  setLivenessStepStatus('login', 1, 'active', 'Center Face');
+  setLivenessStepStatus('login', 1, 'active', 'Position your face inside the guide');
 
   let framesProcessed = 0;
   let consecutiveNetworkErrors = 0;
@@ -875,14 +924,34 @@ async function beginLoginScan() {
     clientFaceOkStreak: 0, // consecutive overlay ticks with a well-framed face
     clientFaceLastReason: 'NO_FACE',
     serverStage: 1,
+    serverRequiredBlinks: 1, // updated from server responses
     lastBrightnessWarn: 0,
   };
+
+  // Initialize status panel
+  const _initStatus = (id, text, cls) => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.textContent = text;
+      el.className = `status-value ${cls}`;
+    }
+  };
+  _initStatus('status-camera', 'Starting…', 'waiting');
+  _initStatus('status-face', 'Not detected', '');
+  _initStatus('status-eyes', 'Not detected', '');
+  _initStatus('status-liveness', 'Waiting', 'waiting');
+  _initStatus('status-blink', 'Waiting', 'waiting');
+  _initStatus('status-identity', 'Not checked', '');
 
   // ── OVERLAY LOOP (client-side feedback only, never authoritative) ─────────
   // Runs face-api landmark detection ~3x per second purely for the face ring,
   // EAR debug overlay, brightness coaching and eye-visibility hints. It shares
   // state with the streaming loop but NEVER blocks or delays it — this is what
   // keeps the server's temporal blink measurement accurate.
+  let _overlayFpsCount = 0;
+  let _overlayFpsLastTime = Date.now();
+  let _overlayFps = 0;
+
   const overlayTick = async () => {
     if (!_loginActive) return;
 
@@ -900,6 +969,53 @@ async function beginLoginScan() {
         const quality = FaceQualityGate.validate(detections, video);
         scanState.clientFaceLastReason = quality.reason || 'NO_FACE';
 
+        // ── Update FPS counter ────────────────────────────────────────────────
+        _overlayFpsCount++;
+        const now = Date.now();
+        if (now - _overlayFpsLastTime >= 1000) {
+          _overlayFps = _overlayFpsCount;
+          _overlayFpsCount = 0;
+          _overlayFpsLastTime = now;
+        }
+
+        // ── Update face guide DOM class ───────────────────────────────────────
+        const faceGuideFrame =
+          document.getElementById('face-guide') &&
+          document.getElementById('face-guide').querySelector('.face-guide-frame');
+        if (faceGuideFrame) {
+          faceGuideFrame.classList.remove('centered', 'too-far', 'too-close', 'off-center');
+          if (quality.ok) {
+            faceGuideFrame.classList.add('centered');
+          } else if (quality.reason === 'TOO_FAR') {
+            faceGuideFrame.classList.add('too-far');
+          } else if (quality.reason === 'TOO_CLOSE') {
+            faceGuideFrame.classList.add('too-close');
+          } else if (quality.reason === 'NOT_CENTERED' || quality.reason === 'PARTIAL') {
+            faceGuideFrame.classList.add('off-center');
+          }
+        }
+
+        // ── Update status panel ───────────────────────────────────────────────
+        const stCamera = document.getElementById('status-camera');
+        if (stCamera) {
+          stCamera.textContent = 'Ready';
+          stCamera.className = 'status-value ready';
+        }
+
+        const stFace = document.getElementById('status-face');
+        if (stFace) {
+          if (quality.ok) {
+            stFace.textContent = 'Detected';
+            stFace.className = 'status-value detected';
+          } else if (quality.reason === 'MULTI_FACE') {
+            stFace.textContent = 'Multiple faces';
+            stFace.className = 'status-value error';
+          } else {
+            stFace.textContent = 'Not detected';
+            stFace.className = 'status-value';
+          }
+        }
+
         if (quality.ok) {
           scanState.clientFaceOkStreak++;
 
@@ -911,9 +1027,89 @@ async function beginLoginScan() {
             const rightEAR = calculateEAR(rightEyePoints);
             const avgEAR = (leftEAR + rightEAR) / 2.0;
 
+            // ── Update eyes status ────────────────────────────────────────────
+            const EAR_OPEN_MIN = 0.15;
+            const eyesOk = leftEAR > EAR_OPEN_MIN && rightEAR > EAR_OPEN_MIN;
+            const stEyes = document.getElementById('status-eyes');
+            if (stEyes) {
+              if (eyesOk) {
+                stEyes.textContent = 'Detected';
+                stEyes.className = 'status-value detected';
+              } else {
+                stEyes.textContent = 'Not visible';
+                stEyes.className = 'status-value';
+              }
+            }
+
             // Client-side blink state machine (real-time feedback only; the
             // server's state machine is the authoritative liveness gate).
             const blinkState = BlinkStateMachine.update(avgEAR, leftEAR, rightEAR, Date.now());
+
+            // ── Update blink status ───────────────────────────────────────────
+            const stBlink = document.getElementById('status-blink');
+            if (stBlink) {
+              const reqBlinks = scanState.serverRequiredBlinks || 1;
+              const clientBlinks = blinkState.blinkCount;
+              if (scanState.serverStage >= 5) {
+                stBlink.textContent = 'Complete';
+                stBlink.className = 'status-value complete';
+              } else if (scanState.serverStage === 4 || blinkState.isCalibrated) {
+                stBlink.textContent = `${clientBlinks} / ${reqBlinks}`;
+                stBlink.className =
+                  clientBlinks >= reqBlinks ? 'status-value complete' : 'status-value in-progress';
+              } else {
+                stBlink.textContent = 'Waiting';
+                stBlink.className = 'status-value waiting';
+              }
+            }
+
+            // ── Update liveness status ────────────────────────────────────────
+            const stLiveness = document.getElementById('status-liveness');
+            if (stLiveness) {
+              if (scanState.serverStage >= 5) {
+                stLiveness.textContent = 'Confirmed';
+                stLiveness.className = 'status-value confirmed';
+              } else if (scanState.serverStage >= 3) {
+                stLiveness.textContent = 'In progress';
+                stLiveness.className = 'status-value in-progress';
+              } else {
+                stLiveness.textContent = 'Waiting';
+                stLiveness.className = 'status-value waiting';
+              }
+            }
+
+            // ── Debug panel updates ───────────────────────────────────────────
+            const debugPanel = document.getElementById('login-debug-panel');
+            if (debugPanel && (EAR_DEBUG_ENABLED || BIO_DEBUG_ENABLED)) {
+              // Show panel in debug mode
+              if (debugPanel.hidden) debugPanel.hidden = false;
+              const det = quality.det;
+              const box = det && det.detection && det.detection.box;
+              const conf = det && det.detection && det.detection.score;
+              const faceCentered = box
+                ? Math.abs((box.x + box.width / 2) / (video.videoWidth || 640) - 0.5) <= 0.3 &&
+                  Math.abs((box.y + box.height / 2) / (video.videoHeight || 480) - 0.5) <= 0.3
+                : false;
+              const setDbg = (id, val) => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = val;
+              };
+              setDbg('dbg-camera', 'READY');
+              setDbg('dbg-resolution', `${video.videoWidth}x${video.videoHeight}`);
+              setDbg('dbg-faces', detections.length.toString());
+              setDbg('dbg-face-conf', conf ? conf.toFixed(3) : '—');
+              setDbg('dbg-face-centered', faceCentered ? 'YES' : quality.reason || 'NO');
+              setDbg('dbg-left-eye', leftEAR > EAR_OPEN_MIN ? 'DETECTED' : 'CLOSED/HIDDEN');
+              setDbg('dbg-right-eye', rightEAR > EAR_OPEN_MIN ? 'DETECTED' : 'CLOSED/HIDDEN');
+              setDbg('dbg-avg-ear', avgEAR.toFixed(3));
+              setDbg('dbg-blink-state', blinkState.state);
+              setDbg('dbg-blink-count', blinkState.blinkCount.toString());
+              setDbg(
+                'dbg-baseline',
+                blinkState.baselineEAR ? blinkState.baselineEAR.toFixed(3) : '—'
+              );
+              setDbg('dbg-fps', _overlayFps.toString());
+            }
 
             // Debug EAR visualization — hidden in the customer flow (enable with ?debug=ear)
             if (EAR_DEBUG_ENABLED) {
@@ -940,15 +1136,35 @@ async function beginLoginScan() {
                 );
               }
             }
+          } else {
+            // Face detected but no landmarks — still update eyes as not visible
+            const stEyes = document.getElementById('status-eyes');
+            if (stEyes) {
+              stEyes.textContent = 'Not visible';
+              stEyes.className = 'status-value';
+            }
           }
         } else {
           scanState.clientFaceOkStreak = 0;
+          // No face — clear eye/blink status
+          const stEyes = document.getElementById('status-eyes');
+          if (stEyes) {
+            stEyes.textContent = 'Not detected';
+            stEyes.className = 'status-value';
+          }
         }
 
         // Draw the face ring overlay (mirrored to match the mirrored preview)
         drawFaceRing(overlayCanvas, video, quality, scanState.serverStage >= 5, true);
       } catch (_) {
         // Detection hiccups must never affect the streaming loop
+      }
+    } else if (!window._bioModelsLoaded) {
+      // Models still loading — update camera status but leave others pending
+      const stCamera = document.getElementById('status-camera');
+      if (stCamera) {
+        stCamera.textContent = 'Loading models…';
+        stCamera.className = 'status-value waiting';
       }
     }
 
@@ -1029,26 +1245,47 @@ async function beginLoginScan() {
       if (serverRes && serverRes.ok) {
         const stage = serverRes.stage || serverRes.current_step || 1;
         scanState.serverStage = stage;
+        if (serverRes.required_blinks) scanState.serverRequiredBlinks = serverRes.required_blinks;
 
         // Stages 1-4 advance ONLY from genuine server evidence
         // (face → landmarks → calibration → counted blinks). Stages 5/6 are
         // gated on real verification results further below.
         if (stage <= 4) {
           markServerLivenessStage('login', stage, serverRes.blink_count, serverRes.required_blinks);
+          // Update step detail text for blink challenge (stage 4)
+          if (
+            stage === 4 &&
+            typeof serverRes.blink_count === 'number' &&
+            serverRes.required_blinks
+          ) {
+            const blinkDetailEl = document.getElementById('login-ps-4-detail');
+            if (blinkDetailEl)
+              blinkDetailEl.textContent = `Blinks detected: ${serverRes.blink_count} / ${serverRes.required_blinks}`;
+          }
         } else if (stage === 5) {
           // Blink challenge complete on the server; the engine is extracting
           // the identity descriptor from an open-eye frame. Mark 1-4 done and
           // show Identity Match as IN PROGRESS (never ✓ before verify runs).
           const bl = serverRes.blink_count;
           const rb = serverRes.required_blinks;
-          const blinkText =
+          const blinkDoneText =
             typeof bl === 'number' && typeof rb === 'number'
-              ? `Blink Challenge (${bl}/${rb})`
-              : 'Blink Challenge';
+              ? `Blink challenge complete (${bl}/${rb}) ✓`
+              : 'Blink challenge complete ✓';
           for (let s2 = 1; s2 <= 4; s2++) {
-            setLivenessStepStatus('login', s2, 'done', s2 === 4 ? blinkText : undefined);
+            setLivenessStepStatus(
+              'login',
+              s2,
+              'done',
+              s2 === 4 ? blinkDoneText : LIVENESS_STAGE_DONE_LABELS[s2]
+            );
           }
-          setLivenessStepStatus('login', 5, 'active', 'Identity Match');
+          setLivenessStepStatus(
+            'login',
+            5,
+            'active',
+            'Comparing your face with enrolled identity…'
+          );
         }
 
         if (serverRes.instruction) {
@@ -1173,14 +1410,14 @@ async function completeLoginIdentityAndSession({
 }) {
   const blinkLabel =
     typeof blinkCount === 'number' && typeof requiredBlinks === 'number'
-      ? `Blink Challenge (${Math.min(blinkCount, requiredBlinks)}/${requiredBlinks})`
-      : 'Blink Challenge';
+      ? `Blink challenge complete (${Math.min(blinkCount, requiredBlinks)}/${requiredBlinks}) ✓`
+      : 'Blink challenge complete ✓';
 
   // Blink challenge genuinely passed on the server → mark stages 1-4 done.
   for (let s = 1; s <= 4; s++) {
-    setLivenessStepStatus('login', s, 'done', s === 4 ? blinkLabel : undefined);
+    setLivenessStepStatus('login', s, 'done', s === 4 ? blinkLabel : LIVENESS_STAGE_DONE_LABELS[s]);
   }
-  setLivenessStepStatus('login', 5, 'active', 'Identity Match');
+  setLivenessStepStatus('login', 5, 'active', 'Comparing your face with enrolled identity…');
   setBannerStatus('login', 'Liveness verified — matching your identity…', 'ok', true);
 
   try {
@@ -1196,11 +1433,18 @@ async function completeLoginIdentityAndSession({
     }
 
     // Server-side face match succeeded → stage 5 is genuinely done.
-    setLivenessStepStatus('login', 5, 'done', 'Identity Match');
-    setLivenessStepStatus('login', 6, 'active', 'Authorized');
+    setLivenessStepStatus('login', 5, 'done', 'Identity matched');
+    setLivenessStepStatus('login', 6, 'active', 'Establishing session…');
     setBannerStatus('login', 'Identity verified — signing you in…', 'ok', true);
     CameraManager.stop(video);
     _loginAttempts = 0; // reset on success
+
+    // Update identity status panel
+    const stIdentity = document.getElementById('status-identity');
+    if (stIdentity) {
+      stIdentity.textContent = 'Matched';
+      stIdentity.className = 'status-value matched';
+    }
 
     const authRes = await window.iCashApi.loginBiometric(verifyRes.biometricToken);
     if (!(authRes && authRes.ok && authRes.user)) {
@@ -1211,7 +1455,7 @@ async function completeLoginIdentityAndSession({
     // the user routed to the dashboard.
     window.currentUser = authRes.user;
     if (typeof currentUser !== 'undefined') currentUser = authRes.user;
-    markLivenessStepDone('login', 6, 'Authorized');
+    markLivenessStepDone('login', 6, 'Authentication successful');
     enterDashboard();
   } catch (verifyErr) {
     console.error('[iCash Bio] Verify error:', verifyErr);
