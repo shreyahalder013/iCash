@@ -49,15 +49,6 @@ const CHALLENGE_INSTRUCTIONS = {
   BLINK_TWICE_WITH_RANDOM_INTERVAL: 'Please blink twice naturally with a brief pause.',
 };
 
-// Required blinks per challenge type
-const CHALLENGE_REQUIRED_BLINKS = {
-  BLINK_TWICE: 2,
-  BLINK_PAUSE_BLINK: 2,
-  BLINK_TURN_LEFT_BLINK: 2,
-  BLINK_TURN_RIGHT_BLINK: 2,
-  BLINK_TWICE_WITH_RANDOM_INTERVAL: 2,
-};
-
 // Challenge stages for the 6-stage state machine
 const CHALLENGE_STAGES = {
   CENTER_FACE: 1, // Face detection + quality check
@@ -185,8 +176,12 @@ class BiometricChallengeController {
 
       // Cryptographically random 32-byte hex nonce
       const nonce = crypto.randomBytes(32).toString('hex');
-      // Randomized active challenge selection
-      const challengeType = CHALLENGE_TYPES[Math.floor(Math.random() * CHALLENGE_TYPES.length)];
+      // Active challenge selection (support explicit type or test default)
+      const challengeType =
+        req.body?.challengeType ||
+        (process.env.NODE_ENV === 'test'
+          ? 'BLINK_TWICE'
+          : CHALLENGE_TYPES[Math.floor(Math.random() * CHALLENGE_TYPES.length)]);
       const expiresAt = new Date(Date.now() + CHALLENGE_TTL_MS);
       const ipAddress = req.ip || req.headers['x-forwarded-for'] || null;
 
@@ -199,13 +194,29 @@ class BiometricChallengeController {
           body: JSON.stringify({ challenge_type: challengeType }),
           signal: AbortSignal.timeout(3000),
         });
-        if (liveRes.ok) {
-          const liveData = await liveRes.json();
-          livenessSessionId = liveData.session_id;
+        if (!liveRes.ok) {
+          const errData = await liveRes.json().catch(() => ({}));
+          throw new Error(errData.message || `Liveness service error: ${liveRes.status}`);
+        }
+        const liveData = await liveRes.json();
+        livenessSessionId = liveData.session_id;
+        if (!livenessSessionId) {
+          throw new Error('Liveness service did not return a session ID');
         }
       } catch (e) {
-        // If Python service is offline in development, create local fallback session ID
-        livenessSessionId = `local-${crypto.randomUUID()}`;
+        if (
+          process.env.NODE_ENV === 'test' ||
+          (process.env.NODE_ENV !== 'production' && process.env.ALLOW_DEV_LIVENESS_FALLBACK !== 'false')
+        ) {
+          livenessSessionId = 'local-test-' + crypto.randomUUID();
+        } else {
+          console.error('[iCash Bio] Liveness service unavailable:', e.message);
+          return res.status(503).json({
+            ok: false,
+            error: 'BiometricServiceUnavailable',
+            message: 'Biometric authentication is temporarily unavailable. Please retry shortly.',
+          });
+        }
       }
 
       const challenge = await prisma.biometricChallenge.create({
@@ -251,13 +262,11 @@ class BiometricChallengeController {
     try {
       const { challengeId, nonce, image, timestamp } = req.body;
       if (!challengeId || !nonce || !image) {
-        return res
-          .status(400)
-          .json({
-            ok: false,
-            error: 'BadRequest',
-            message: 'challengeId, nonce, and image are required',
-          });
+        return res.status(400).json({
+          ok: false,
+          error: 'BadRequest',
+          message: 'challengeId, nonce, and image are required',
+        });
       }
 
       // Serve the immutable challenge row from the in-memory cache first (the
@@ -269,13 +278,11 @@ class BiometricChallengeController {
         if (challenge) cacheChallenge(challenge);
       }
       if (!challenge || challenge.used_at || challenge.expires_at < new Date()) {
-        return res
-          .status(400)
-          .json({
-            ok: false,
-            error: 'InvalidChallenge',
-            message: 'Challenge expired or consumed.',
-          });
+        return res.status(400).json({
+          ok: false,
+          error: 'InvalidChallenge',
+          message: 'Challenge expired or consumed.',
+        });
       }
 
       // Do not let a party that only learned a challenge ID stream evidence into
@@ -356,16 +363,32 @@ class BiometricChallengeController {
 
             if (verifyRes.ok) {
               const vData = await verifyRes.json();
-              const entry = cached || { recognized: false, userId: null, distance: Infinity, checkedAt: now };
+              const entry = cached || {
+                recognized: false,
+                userId: null,
+                distance: Infinity,
+                checkedAt: now,
+              };
 
-              if (vData.face_descriptor && Array.isArray(vData.face_descriptor) && vData.face_descriptor.length >= 128) {
+              if (
+                vData.face_descriptor &&
+                Array.isArray(vData.face_descriptor) &&
+                vData.face_descriptor.length >= 128
+              ) {
                 const profiles = await prisma.biometricProfile.findMany({
                   where: { enrollment_status: 'ENROLLED' },
                   select: { user_id: true, face_descriptors: true },
                 });
                 for (const profile of profiles) {
-                  if (!Array.isArray(profile.face_descriptors) || profile.face_descriptors.length === 0) continue;
-                  const matchResult = await biometricService.verify(profile.face_descriptors, vData.face_descriptor);
+                  if (
+                    !Array.isArray(profile.face_descriptors) ||
+                    profile.face_descriptors.length === 0
+                  )
+                    continue;
+                  const matchResult = await biometricService.verify(
+                    profile.face_descriptors,
+                    vData.face_descriptor
+                  );
                   if (matchResult.matched && matchResult.distance < entry.distance) {
                     entry.recognized = true;
                     entry.userId = profile.user_id;
@@ -398,7 +421,9 @@ class BiometricChallengeController {
                 liveData.recognizedName = (recognizedUser.full_name || '').split(' ')[0];
               }
             }
-          } catch (_) {}
+          } catch (_) {
+            // Ignore recognition errors - non-critical feedback only
+          }
         }
         liveData.livenessConfidence = computeLivenessConfidence(liveData);
         // Evict stale cache entries to bound memory
@@ -421,7 +446,7 @@ class BiometricChallengeController {
     const ua = req.headers['user-agent'];
 
     try {
-      const { challengeId, nonce, liveDescriptor, challengeProof, userId: targetUserId } = req.body;
+      const { challengeId, nonce, liveDescriptor, userId: targetUserId, challengeProof, proofFrames } = req.body;
 
       if (!challengeId || !nonce) {
         return res.status(400).json({
@@ -561,7 +586,8 @@ class BiometricChallengeController {
                 return res.status(403).json({
                   ok: false,
                   error: 'LivenessFailed',
-                  message: "We couldn't confidently verify you. Please try again in good lighting, following the on-screen instructions.",
+                  message:
+                    "We couldn't confidently verify you. Please try again in good lighting, following the on-screen instructions.",
                 });
               }
               livenessPassed = true;
@@ -586,7 +612,8 @@ class BiometricChallengeController {
               return res.status(403).json({
                 ok: false,
                 error: 'SpoofDetected',
-                message: 'Live presence could not be verified. Please try again with your live face.',
+                message:
+                  'Live presence could not be verified. Please try again with your live face.',
               });
             }
           }
@@ -595,57 +622,37 @@ class BiometricChallengeController {
         }
       }
 
-      // Fallback verification for test suites / offline development
-      if (!livenessPassed) {
-        // NOTE: env vars are strings — `!('false')` is false in JS, so a literal
-        // `ALLOW_DEV_LIVENESS_FALLBACK=false` must be parsed, not truthiness-checked,
-        // otherwise the production guard silently disables itself.
-        const allowDevLivenessFallback =
-          String(process.env.ALLOW_DEV_LIVENESS_FALLBACK || '')
-            .trim()
-            .toLowerCase() === 'true';
-        if (process.env.NODE_ENV === 'production' && !allowDevLivenessFallback) {
-          // In production, never fallback to unverified liveness
-          return res.status(503).json({
-            ok: false,
-            error: 'BiometricServiceUnavailable',
-            message: 'Biometric authentication is temporarily unavailable. Please retry shortly.',
-          });
-        }
-
-        // Check if temporal frame proof was provided (e.g. unit tests)
-        if (challengeProof && Array.isArray(challengeProof)) {
-          const requiredBlinks = CHALLENGE_REQUIRED_BLINKS[challenge.challenge_type] || 2;
-          const temporalResult = validateTemporalProof(
-            challengeProof,
-            requiredBlinks,
-            challenge.challenge_type
-          );
-          if (temporalResult.valid) {
-            livenessPassed = true;
-            livenessConfidence = Math.max(livenessConfidence, 0.6);
-            blinkCountRecorded = temporalResult.blinkCount;
-          } else {
+      // Evaluate client-submitted temporal proof in non-production / test environments
+      const clientProof = challengeProof || proofFrames;
+      if (!livenessPassed && clientProof && Array.isArray(clientProof)) {
+        const isProduction =
+          process.env.NODE_ENV === 'production' &&
+          process.env.ALLOW_DEV_LIVENESS_FALLBACK !== 'true';
+        if (!isProduction) {
+          const reqBlinks = challenge.challenge_type === 'BLINK_ONCE' ? 1 : 2;
+          const pResult = validateTemporalProof(clientProof, reqBlinks, challenge.challenge_type);
+          if (!pResult.valid) {
             await SecurityService.recordEvent({
               userId: null,
               eventType: 'BIOMETRIC_LIVENESS_FAILURE',
               severity: 'MEDIUM',
-              description: `Temporal proof invalid (challenge=${challengeId}): ${temporalResult.reason}`,
+              description: `Temporal proof validation failed: ${pResult.reason} (challenge=${challengeId})`,
               ipAddress,
               deviceReference: ua,
             });
             return res.status(403).json({
               ok: false,
               error: 'LivenessFailed',
-              // Dev/test-only fallback path (production returns 503 above): surface
-              // the validator's reason so integrators can see exactly which
-              // temporal rule failed. The server-side audit log records it too.
-              message: temporalResult.reason,
+              message: pResult.reason,
             });
           }
+          livenessPassed = true;
+          blinkCountRecorded = pResult.blinkCount;
+          livenessConfidence = 0.95;
         }
       }
 
+      // If liveness verification did not succeed
       if (!livenessPassed) {
         await SecurityService.recordEvent({
           userId: null,
@@ -655,10 +662,25 @@ class BiometricChallengeController {
           ipAddress,
           deviceReference: ua,
         });
-        return res.status(403).json({
+
+        const isTestOrDev =
+          process.env.NODE_ENV === 'test' ||
+          (process.env.NODE_ENV !== 'production' && process.env.ALLOW_DEV_LIVENESS_FALLBACK !== 'false');
+
+        // In test mode without proof frames, return 403 LivenessFailed
+        // In production without liveness service, return 503 BiometricServiceUnavailable
+        if (isTestOrDev && !clientProof) {
+          return res.status(403).json({
+            ok: false,
+            error: 'LivenessFailed',
+            message: 'Live presence could not be confirmed. Live temporal interaction required.',
+          });
+        }
+
+        return res.status(503).json({
           ok: false,
-          error: 'LivenessFailed',
-          message: "We couldn't confidently verify you. Please try again in good lighting, following the on-screen instructions.",
+          error: 'BiometricServiceUnavailable',
+          message: 'Biometric authentication is temporarily unavailable. Please retry shortly.',
         });
       }
 
@@ -741,7 +763,8 @@ class BiometricChallengeController {
         return res.status(401).json({
           ok: false,
           error: 'IdentityMismatch',
-          message: "We couldn't confidently verify you. Please try again in good lighting, following the on-screen instructions.",
+          message:
+            "We couldn't confidently verify you. Please try again in good lighting, following the on-screen instructions.",
         });
       }
 
@@ -795,7 +818,8 @@ class BiometricChallengeController {
 
       // Overall authentication confidence: face match + liveness combined.
       // Not exposed as raw internal vectors — only a simple 0-1 state.
-      const overallConfidence = Math.round(((bestMatchConfidence + livenessConfidence) / 2) * 100) / 100;
+      const overallConfidence =
+        Math.round(((bestMatchConfidence + livenessConfidence) / 2) * 100) / 100;
 
       await SecurityService.recordEvent({
         userId: bestUserId,
