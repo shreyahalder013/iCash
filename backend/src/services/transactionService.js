@@ -334,7 +334,7 @@ class TransactionService {
       }
 
         throw new Error(`Unsupported transaction type: ${transactionType}`);
-      }, { timeout: 30000, maxWait: 10000 });
+      });
       // Fraud analysis is persisted for every user-created transaction so the
       // risk endpoint is immediately available without a second client call.
       if (result.transaction?.id) {
@@ -691,7 +691,7 @@ class TransactionService {
         completedAt: transaction.created_at,
         message: `₹${amount.toLocaleString('en-IN')} successfully authorized and released to ${authorizedName}.`,
       };
-    }, { timeout: 30000, maxWait: 10000 });
+    });
   }
 
   /**

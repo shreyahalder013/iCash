@@ -26,7 +26,6 @@ const jwt = require('jsonwebtoken');
 const prisma = require('../prisma');
 const { biometricService } = require('../services/biometricService');
 const SecurityService = require('../services/securityService');
-const { validateTemporalProof } = require('../services/temporalLivenessValidator');
 
 // Configurable Constants
 const CHALLENGE_TTL_MS = Number(process.env.BIOMETRIC_CHALLENGE_TTL_MS) || 60 * 1000; // 60 seconds
@@ -176,16 +175,12 @@ class BiometricChallengeController {
 
       // Cryptographically random 32-byte hex nonce
       const nonce = crypto.randomBytes(32).toString('hex');
-      // Active challenge selection (support explicit type or test default)
-      const challengeType =
-        req.body?.challengeType ||
-        (process.env.NODE_ENV === 'test'
-          ? 'BLINK_TWICE'
-          : CHALLENGE_TYPES[Math.floor(Math.random() * CHALLENGE_TYPES.length)]);
+      // Randomized active challenge selection
+      const challengeType = CHALLENGE_TYPES[Math.floor(Math.random() * CHALLENGE_TYPES.length)];
       const expiresAt = new Date(Date.now() + CHALLENGE_TTL_MS);
       const ipAddress = req.ip || req.headers['x-forwarded-for'] || null;
 
-      // Start session on liveness engine
+      // Start session on liveness engine (REQUIRED - no fallback)
       let livenessSessionId = null;
       try {
         const liveRes = await fetch(`${getLivenessUrl()}/liveness/start`, {
@@ -204,19 +199,13 @@ class BiometricChallengeController {
           throw new Error('Liveness service did not return a session ID');
         }
       } catch (e) {
-        if (
-          process.env.NODE_ENV === 'test' ||
-          (process.env.NODE_ENV !== 'production' && process.env.ALLOW_DEV_LIVENESS_FALLBACK !== 'false')
-        ) {
-          livenessSessionId = 'local-test-' + crypto.randomUUID();
-        } else {
-          console.error('[iCash Bio] Liveness service unavailable:', e.message);
-          return res.status(503).json({
-            ok: false,
-            error: 'BiometricServiceUnavailable',
-            message: 'Biometric authentication is temporarily unavailable. Please retry shortly.',
-          });
-        }
+        // Python liveness service is REQUIRED - no local fallback
+        console.error('[iCash Bio] Liveness service unavailable:', e.message);
+        return res.status(503).json({
+          ok: false,
+          error: 'BiometricServiceUnavailable',
+          message: 'Biometric authentication is temporarily unavailable. Please retry shortly.',
+        });
       }
 
       const challenge = await prisma.biometricChallenge.create({
@@ -446,7 +435,7 @@ class BiometricChallengeController {
     const ua = req.headers['user-agent'];
 
     try {
-      const { challengeId, nonce, liveDescriptor, userId: targetUserId, challengeProof, proofFrames } = req.body;
+      const { challengeId, nonce, liveDescriptor, userId: targetUserId } = req.body;
 
       if (!challengeId || !nonce) {
         return res.status(400).json({
@@ -622,61 +611,16 @@ class BiometricChallengeController {
         }
       }
 
-      // Evaluate client-submitted temporal proof in non-production / test environments
-      const clientProof = challengeProof || proofFrames;
-      if (!livenessPassed && clientProof && Array.isArray(clientProof)) {
-        const isProduction =
-          process.env.NODE_ENV === 'production' &&
-          process.env.ALLOW_DEV_LIVENESS_FALLBACK !== 'true';
-        if (!isProduction) {
-          const reqBlinks = challenge.challenge_type === 'BLINK_ONCE' ? 1 : 2;
-          const pResult = validateTemporalProof(clientProof, reqBlinks, challenge.challenge_type);
-          if (!pResult.valid) {
-            await SecurityService.recordEvent({
-              userId: null,
-              eventType: 'BIOMETRIC_LIVENESS_FAILURE',
-              severity: 'MEDIUM',
-              description: `Temporal proof validation failed: ${pResult.reason} (challenge=${challengeId})`,
-              ipAddress,
-              deviceReference: ua,
-            });
-            return res.status(403).json({
-              ok: false,
-              error: 'LivenessFailed',
-              message: pResult.reason,
-            });
-          }
-          livenessPassed = true;
-          blinkCountRecorded = pResult.blinkCount;
-          livenessConfidence = 0.95;
-        }
-      }
-
-      // If liveness verification did not succeed
+      // Python liveness service is REQUIRED - no fallback to client-submitted proof
       if (!livenessPassed) {
         await SecurityService.recordEvent({
           userId: null,
           eventType: 'BIOMETRIC_LIVENESS_FAILURE',
           severity: 'MEDIUM',
-          description: `Liveness verification incomplete or failed (challenge=${challengeId})`,
+          description: `Liveness verification incomplete or failed - Python service unavailable (challenge=${challengeId})`,
           ipAddress,
           deviceReference: ua,
         });
-
-        const isTestOrDev =
-          process.env.NODE_ENV === 'test' ||
-          (process.env.NODE_ENV !== 'production' && process.env.ALLOW_DEV_LIVENESS_FALLBACK !== 'false');
-
-        // In test mode without proof frames, return 403 LivenessFailed
-        // In production without liveness service, return 503 BiometricServiceUnavailable
-        if (isTestOrDev && !clientProof) {
-          return res.status(403).json({
-            ok: false,
-            error: 'LivenessFailed',
-            message: 'Live presence could not be confirmed. Live temporal interaction required.',
-          });
-        }
-
         return res.status(503).json({
           ok: false,
           error: 'BiometricServiceUnavailable',
