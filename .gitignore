@@ -12,7 +12,7 @@ Thumbs.db
 backend/pg_data/
 coverage/
 
-# Python & Liveness artifacts
+# Python artifacts
 __pycache__/
 *.py[cod]
 *$py.class
@@ -20,8 +20,6 @@ __pycache__/
 venv/
 *.dat
 *.dat.bz2
-liveness_server/shape_predictor_68_face_landmarks.dat
-liveness_server/shape_5.dat
 backend/audit*.json
 scratch/
 .agents/

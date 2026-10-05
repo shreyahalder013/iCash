@@ -112,6 +112,7 @@ model User {
   last_login_at           DateTime?
 
   biometric_profile      BiometricProfile?
+  face_template          FaceTemplate?
   accounts               BankAccount[]
   transactions           Transaction[]
   sessions               LoginSession[]
@@ -269,6 +270,41 @@ model BiometricChallenge {
   @@index([user_id])
   @@index([expires_at])
   @@index([liveness_session_id])
+}
+
+/// Server-issued liveness nonce for MediaPipe-based client-side liveness (replaces BiometricChallenge)
+/// Each nonce is single-use, IP-bound, and expires after 30 seconds.
+model LivenessNonce {
+  id               String    @id @default(uuid())
+  nonce            String    @unique           // cryptographically random 32-byte hex
+  required_blinks  Int       @default(2)       // 1 or 2 blinks required
+  user_id          String?                     // bound after face match
+  ip_address       String?
+  expires_at       DateTime
+  consumed_at      DateTime?                   // set when consumed — prevents replay
+  created_at       DateTime  @default(now())
+
+  @@index([nonce])
+  @@index([user_id])
+  @@index([expires_at])
+}
+
+/// Encrypted face template storage (AES-256-GCM)
+/// Replaces plaintext face_descriptors in BiometricProfile
+model FaceTemplate {
+  id                  String    @id @default(uuid())
+  user_id             String    @unique
+  encrypted_descriptor Bytes     // AES-256-GCM encrypted Float32Array
+  iv                  Bytes       // 12-byte random IV
+  auth_tag            Bytes       // 16-byte auth tag
+  status              String      @default("ACTIVE") // ACTIVE | REVOKED
+  created_at          DateTime    @default(now())
+  updated_at          DateTime    @updatedAt
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([status])
 }
 
 model BankAccount {

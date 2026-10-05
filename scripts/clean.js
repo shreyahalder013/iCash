@@ -9,7 +9,6 @@ const defaultDirs = [
   path.join(rootDir, '.next'),
   path.join(rootDir, 'coverage'),
   path.join(rootDir, 'backend', 'coverage'),
-  path.join(rootDir, 'liveness_server', '__pycache__'),
 ];
 
 function removeDirectory(dirPath) {

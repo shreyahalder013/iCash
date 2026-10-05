@@ -410,45 +410,17 @@ function autoSyncDatabase() {
   }
 }
 
-function ensureLivenessServerRunning() {
-  if (process.env.NODE_ENV === 'production') return;
-  const http = require('http');
-  const req = http.get('http://127.0.0.1:5001/health', () => {});
-  req.on('error', () => {
-    const pythonExe =
-      process.platform === 'win32'
-        ? path.join(__dirname, '..', '..', '.venv', 'Scripts', 'python.exe')
-        : path.join(__dirname, '..', '..', '.venv', 'bin', 'python');
-    const fs = require('fs');
-    const cmd = fs.existsSync(pythonExe) ? pythonExe : 'python';
-    const appPath = path.join(__dirname, '..', '..', 'liveness_server', 'app.py');
-    try {
-      const { spawn } = require('child_process');
-      const p = spawn(cmd, [appPath], {
-        stdio: 'ignore',
-        detached: true,
-      });
-      p.unref();
-      console.log('[iCash] Started local Python liveness service on port 5001');
-    } catch (err) {
-      console.warn('[iCash] Could not auto-spawn liveness service:', err.message);
-    }
-  });
-}
-
 function startServer(port) {
   const server = app.listen(port, () => {
     console.log(`\n=======================================================`);
     console.log(`🚀 iCash Full-Stack Banking Backend running on: http://localhost:${port}`);
     console.log(`🔒 Security: Argon2/Bcrypt + HTTP-Only Session Cookies`);
     console.log(`🗄️  Database: PostgreSQL with Prisma ORM`);
-    console.log(`👁️  Biometrics: Facial Feature Vector Verification Gate`);
+    console.log(`👁️  Biometrics: MediaPipe FaceLandmarker (WASM) Client-Side Liveness`);
     console.log(`=======================================================\n`);
 
     // Auto sync schema if cloud database is configured
     setTimeout(autoSyncDatabase, 1500);
-    // Ensure liveness service is active in dev
-    setTimeout(ensureLivenessServerRunning, 1000);
   });
 
   server.on('error', (err) => {

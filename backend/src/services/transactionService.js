@@ -147,197 +147,204 @@ class TransactionService {
       throw err;
     }
 
+    const refNumber = `TX_${crypto.randomUUID()}`;
+    let result;
     try {
-      const result = await prisma.$transaction(async (tx) => {
-        // 1. Fetch user's target account (or primary account if none specified)
-        let account;
-        if (accountId) {
-          account = await tx.bankAccount.findFirst({
-            where: { id: accountId, user_id: userId, status: 'ACTIVE' },
-          });
-        } else {
-          account = await tx.bankAccount.findFirst({
-            where: { user_id: userId, is_primary: true, status: 'ACTIVE' },
-          });
-        }
+      result = await prisma.$transaction(
+        async (tx) => {
+          // 1. Fetch user's target account (or primary account if none specified)
+          let account;
+          if (accountId) {
+            account = await tx.bankAccount.findFirst({
+              where: { id: accountId, user_id: userId, status: 'ACTIVE' },
+            });
+          } else {
+            account = await tx.bankAccount.findFirst({
+              where: { user_id: userId, is_primary: true, status: 'ACTIVE' },
+            });
+          }
 
-        if (!account) {
-          const err = new Error('Active banking account not found for this user.');
-          err.status = 404;
-          throw err;
-        }
-
-        const currentBalance = Number(account.balance);
-        const refNumber = `TX_${crypto.randomUUID()}`;
-
-        // 2. Handle specific transaction types
-        if (transactionType === 'WITHDRAWAL') {
-          // Conditional update prevents two concurrent withdrawals from both
-          // passing a stale in-memory balance check.
-          const debited = await tx.bankAccount.updateMany({
-            where: { id: account.id, status: 'ACTIVE', balance: { gte: numAmount } },
-            data: { balance: { decrement: numAmount } },
-          });
-          if (debited.count !== 1) {
-            const err = new Error('Insufficient funds.');
-            err.status = 400;
+          if (!account) {
+            const err = new Error('Active banking account not found for this user.');
+            err.status = 404;
             throw err;
           }
-          const updatedAccount = await tx.bankAccount.findUnique({ where: { id: account.id } });
-          const newBalance = Number(updatedAccount.balance);
 
-          const createdTx = await tx.transaction.create({
-            data: {
-              user_id: userId,
-              account_id: account.id,
-              transaction_type: 'WITHDRAWAL',
-              amount: numAmount,
-              description: description || 'ATM cash withdrawal (biometric verified)',
-              status: 'COMPLETED',
-              reference_number: refNumber,
-              category: category.category,
-              category_confidence: category.confidence,
-              ...(idempotencyKey ? { idempotency_key: String(idempotencyKey) } : {}),
-            },
-          });
+          const currentBalance = Number(account.balance);
 
-          await tx.securityEvent.create({
-            data: {
-              user_id: userId,
-              event_type: 'TRANSACTION_SUCCESS',
-              severity: numAmount >= 10000 ? 'MEDIUM' : 'LOW',
-              description: `Withdrawal of ₹${numAmount.toLocaleString('en-IN')} authorized via ${verifyMethod}.`,
-              ip_address: req?.ip,
-              device_reference: req?.headers['user-agent'],
-            },
-          });
-
-          return {
-            transaction: createdTx,
-            newBalance,
-            accountMasked: account.account_number_masked,
-          };
-        } else if (transactionType === 'TRANSFER') {
-          let recipientPrimaryAccount = null;
-          if (recipientUserId) {
-            recipientPrimaryAccount = await tx.bankAccount.findFirst({
-              where: { user_id: recipientUserId, is_primary: true, status: 'ACTIVE' },
+          // 2. Handle specific transaction types
+          if (transactionType === 'WITHDRAWAL') {
+            // Conditional update prevents two concurrent withdrawals from both
+            // passing a stale in-memory balance check.
+            const debited = await tx.bankAccount.updateMany({
+              where: { id: account.id, status: 'ACTIVE', balance: { gte: numAmount } },
+              data: { balance: { decrement: numAmount } },
             });
-            if (!recipientPrimaryAccount) {
-              const err = new Error('A valid active recipient account is required.');
+            if (debited.count !== 1) {
+              const err = new Error('Insufficient funds.');
               err.status = 400;
               throw err;
             }
-          }
+            const updatedAccount = await tx.bankAccount.findUnique({ where: { id: account.id } });
+            const newBalance = Number(updatedAccount.balance);
 
-          const debited = await tx.bankAccount.updateMany({
-            where: { id: account.id, status: 'ACTIVE', balance: { gte: numAmount } },
-            data: { balance: { decrement: numAmount } },
-          });
-          if (debited.count !== 1) {
-            const err = new Error('Insufficient funds.');
-            err.status = 400;
-            throw err;
-          }
-          const senderAccount = await tx.bankAccount.findUnique({ where: { id: account.id } });
-          const senderNewBalance = Number(senderAccount.balance);
-
-          const senderTx = await tx.transaction.create({
-            data: {
-              user_id: userId,
-              account_id: account.id,
-              transaction_type: 'TRANSFER',
-              amount: numAmount,
-              description: description || `Transfer to ${recipientName || 'recipient'}`,
-              recipient_name: recipientName || null,
-              recipient_account: recipientAccount || null,
-              status: 'COMPLETED',
-              reference_number: refNumber,
-              category: category.category,
-              category_confidence: category.confidence,
-            },
-          });
-
-          // If recipient is another internal registered user, credit their primary account atomically
-          if (recipientUserId) {
-            await tx.bankAccount.update({
-              where: { id: recipientPrimaryAccount.id },
-              data: { balance: { increment: numAmount } },
-            });
-
-            const senderUser = await tx.user.findUnique({
-              where: { id: userId },
-              select: { full_name: true },
-            });
-
-            await tx.transaction.create({
+            const createdTx = await tx.transaction.create({
               data: {
-                user_id: recipientUserId,
-                account_id: recipientPrimaryAccount.id,
-                transaction_type: 'DEPOSIT',
+                user_id: userId,
+                account_id: account.id,
+                transaction_type: 'WITHDRAWAL',
                 amount: numAmount,
-                description: `Received transfer from ${senderUser?.full_name || 'iCash user'}`,
-                recipient_name: senderUser?.full_name || null,
+                description: description || 'ATM cash withdrawal (biometric verified)',
                 status: 'COMPLETED',
-                reference_number: `TX_REC_${crypto.randomUUID()}`,
-                category: SmartExpenseService.categorize(
-                  `Received transfer from ${senderUser?.full_name || 'iCash user'}`,
-                  'DEPOSIT'
-                ).category,
-                category_confidence: 0.98,
+                reference_number: refNumber,
+                category: category.category,
+                category_confidence: category.confidence,
+                ...(idempotencyKey ? { idempotency_key: String(idempotencyKey) } : {}),
               },
             });
+
+            await tx.securityEvent.create({
+              data: {
+                user_id: userId,
+                event_type: 'TRANSACTION_SUCCESS',
+                severity: numAmount >= 10000 ? 'MEDIUM' : 'LOW',
+                description: `Withdrawal of ₹${numAmount.toLocaleString('en-IN')} authorized via ${verifyMethod}.`,
+                ip_address: req?.ip,
+                device_reference: req?.headers['user-agent'],
+              },
+            });
+
+            return {
+              transaction: createdTx,
+              newBalance,
+              accountMasked: account.account_number_masked,
+            };
+          } else if (transactionType === 'TRANSFER') {
+            let recipientPrimaryAccount = null;
+            if (recipientUserId) {
+              recipientPrimaryAccount = await tx.bankAccount.findFirst({
+                where: { user_id: recipientUserId, is_primary: true, status: 'ACTIVE' },
+              });
+              if (!recipientPrimaryAccount) {
+                const err = new Error('A valid active recipient account is required.');
+                err.status = 400;
+                throw err;
+              }
+            }
+
+            const debited = await tx.bankAccount.updateMany({
+              where: { id: account.id, status: 'ACTIVE', balance: { gte: numAmount } },
+              data: { balance: { decrement: numAmount } },
+            });
+            if (debited.count !== 1) {
+              const err = new Error('Insufficient funds.');
+              err.status = 400;
+              throw err;
+            }
+            const senderAccount = await tx.bankAccount.findUnique({ where: { id: account.id } });
+            const senderNewBalance = Number(senderAccount.balance);
+
+            const senderTx = await tx.transaction.create({
+              data: {
+                user_id: userId,
+                account_id: account.id,
+                transaction_type: 'TRANSFER',
+                amount: numAmount,
+                description: description || `Transfer to ${recipientName || 'recipient'}`,
+                recipient_name: recipientName || null,
+                recipient_account: recipientAccount || null,
+                status: 'COMPLETED',
+                reference_number: refNumber,
+                category: category.category,
+                category_confidence: category.confidence,
+              },
+            });
+
+            // If recipient is another internal registered user, credit their primary account atomically
+            if (recipientUserId) {
+              await tx.bankAccount.update({
+                where: { id: recipientPrimaryAccount.id },
+                data: { balance: { increment: numAmount } },
+              });
+
+              const senderUser = await tx.user.findUnique({
+                where: { id: userId },
+                select: { full_name: true },
+              });
+
+              await tx.transaction.create({
+                data: {
+                  user_id: recipientUserId,
+                  account_id: recipientPrimaryAccount.id,
+                  transaction_type: 'DEPOSIT',
+                  amount: numAmount,
+                  description: `Received transfer from ${senderUser?.full_name || 'iCash user'}`,
+                  recipient_name: senderUser?.full_name || null,
+                  status: 'COMPLETED',
+                  reference_number: `TX_REC_${crypto.randomUUID()}`,
+                  category: SmartExpenseService.categorize(
+                    `Received transfer from ${senderUser?.full_name || 'iCash user'}`,
+                    'DEPOSIT'
+                  ).category,
+                  category_confidence: 0.98,
+                },
+              });
+            }
+
+            await tx.securityEvent.create({
+              data: {
+                user_id: userId,
+                event_type: 'TRANSFER_SUCCESS',
+                severity: numAmount >= 20000 ? 'HIGH' : 'LOW',
+                description: `Transfer of ₹${numAmount.toLocaleString('en-IN')} to ${recipientName || 'external'} authorized via ${verifyMethod}.`,
+                ip_address: req?.ip,
+                device_reference: req?.headers['user-agent'],
+              },
+            });
+
+            return {
+              transaction: senderTx,
+              newBalance: senderNewBalance,
+              accountMasked: account.account_number_masked,
+            };
+          } else if (transactionType === 'DEPOSIT') {
+            // Use DB-level increment to avoid JavaScript floating-point precision errors.
+            await tx.bankAccount.update({
+              where: { id: account.id },
+              data: { balance: { increment: numAmount } },
+            });
+            const depositedAccount = await tx.bankAccount.findUnique({ where: { id: account.id } });
+            const newBalance = Number(depositedAccount.balance);
+
+            const createdTx = await tx.transaction.create({
+              data: {
+                user_id: userId,
+                account_id: account.id,
+                transaction_type: 'DEPOSIT',
+                amount: numAmount,
+                description: description || 'Account top-up / deposit',
+                status: 'COMPLETED',
+                reference_number: refNumber,
+                category: category.category,
+                category_confidence: category.confidence,
+                ...(idempotencyKey ? { idempotency_key: String(idempotencyKey) } : {}),
+              },
+            });
+
+            return {
+              transaction: createdTx,
+              newBalance,
+              accountMasked: account.account_number_masked,
+            };
           }
 
-          await tx.securityEvent.create({
-            data: {
-              user_id: userId,
-              event_type: 'TRANSFER_SUCCESS',
-              severity: numAmount >= 20000 ? 'HIGH' : 'LOW',
-              description: `Transfer of ₹${numAmount.toLocaleString('en-IN')} to ${recipientName || 'external'} authorized via ${verifyMethod}.`,
-              ip_address: req?.ip,
-              device_reference: req?.headers['user-agent'],
-            },
-          });
-
-          return {
-            transaction: senderTx,
-            newBalance: senderNewBalance,
-            accountMasked: account.account_number_masked,
-          };
-        } else if (transactionType === 'DEPOSIT') {
-          // Use DB-level increment to avoid JavaScript floating-point precision errors.
-          await tx.bankAccount.update({
-            where: { id: account.id },
-            data: { balance: { increment: numAmount } },
-          });
-          const depositedAccount = await tx.bankAccount.findUnique({ where: { id: account.id } });
-          const newBalance = Number(depositedAccount.balance);
-
-          const createdTx = await tx.transaction.create({
-            data: {
-              user_id: userId,
-              account_id: account.id,
-              transaction_type: 'DEPOSIT',
-              amount: numAmount,
-              description: description || 'Account top-up / deposit',
-              status: 'COMPLETED',
-              reference_number: refNumber,
-              category: category.category,
-              category_confidence: category.confidence,
-              ...(idempotencyKey ? { idempotency_key: String(idempotencyKey) } : {}),
-            },
-          });
-
-          return {
-            transaction: createdTx,
-            newBalance,
-            accountMasked: account.account_number_masked,
-          };
+          throw new Error(`Unsupported transaction type: ${transactionType}`);
+        },
+        {
+          maxWait: 15000,
+          timeout: 30000,
         }
-
-        throw new Error(`Unsupported transaction type: ${transactionType}`);
-      });
+      );
       // Fraud analysis is persisted for every user-created transaction so the
       // risk endpoint is immediately available without a second client call.
       if (result.transaction?.id) {
@@ -346,6 +353,58 @@ class TransactionService {
       }
       return result;
     } catch (err) {
+      // Retry on Prisma transaction errors by re-running the transaction logic
+      // once without the $transaction wrapper. This handles Prisma connection/
+      // transaction issues (timeouts, closed transactions, etc.) that don't have
+      // standard error codes or are not properly propagated.
+      // Do NOT retry on business logic errors (insufficient funds, invalid amount, etc.)
+      const isBusinessLogicError =
+        err.status === 400 ||
+        err.status === 404 ||
+        err.status === 409 ||
+        (err.message &&
+          (err.message.includes('Insufficient funds') ||
+            err.message.includes('Invalid transaction amount') ||
+            err.message.includes('Self-transfer is not permitted') ||
+            err.message.includes('Active banking account not found') ||
+            err.message.includes('A valid active recipient account is required') ||
+            err.message.includes('Unsupported transaction type')));
+      const isTransactionError =
+        !isBusinessLogicError &&
+        (err.code === 'P2028' ||
+          err.code === 'P2034' ||
+          err.code === 'P2024' ||
+          (err.message &&
+            (err.message.includes('Transaction not found') ||
+              err.message.includes('Transaction API error') ||
+              err.message.includes('Transaction ID is invalid') ||
+              err.message.includes('closed transaction') ||
+              err.message.includes('obtained before disconnecting') ||
+              err.message.includes('Transaction already closed') ||
+              err.message.includes('expired transaction') ||
+              err.message.includes('timeout') ||
+              err.message.includes('Invalid.*invocation') ||
+              err.message.includes('tx\\.'))) ||
+          (err.name && err.name.includes('PrismaClient')) ||
+          (err.message && err.message.includes('prisma')));
+      if (isTransactionError) {
+        // Re-run the transaction logic without the $transaction wrapper
+        // (similar to authService fallback)
+        return TransactionService.processTransactionDirect(
+          userId,
+          payload,
+          req,
+          options,
+          category,
+          numAmount,
+          refNumber,
+          idempotencyKey,
+          verifyMethod,
+          recipientName,
+          recipientAccount,
+          recipientUserId
+        );
+      }
       // A concurrent retry may win the unique idempotency-key insert. Treat it
       // as the same completed request instead of surfacing a conflict.
       if (idempotencyKey && err.code === 'P2002') {
@@ -364,6 +423,206 @@ class TransactionService {
       }
       throw err;
     }
+  }
+
+  /**
+   * Direct transaction processor without Prisma $transaction wrapper.
+   * Used as a retry mechanism when Prisma transaction fails (P2028).
+   * This is a simplified version that executes operations sequentially.
+   */
+  static async processTransactionDirect(
+    userId,
+    payload,
+    req,
+    options,
+    category,
+    numAmount,
+    refNumber,
+    idempotencyKey,
+    verifyMethod,
+    recipientName,
+    recipientAccount,
+    recipientUserId
+  ) {
+    const { accountId, transactionType, description } = payload;
+
+    // 1. Fetch user's target account (or primary account if none specified)
+    let account;
+    if (accountId) {
+      account = await prisma.bankAccount.findFirst({
+        where: { id: accountId, user_id: userId, status: 'ACTIVE' },
+      });
+    } else {
+      account = await prisma.bankAccount.findFirst({
+        where: { user_id: userId, is_primary: true, status: 'ACTIVE' },
+      });
+    }
+
+    if (!account) {
+      const err = new Error('Active banking account not found for this user.');
+      err.status = 404;
+      throw err;
+    }
+
+    // 2. Handle specific transaction types
+    if (transactionType === 'WITHDRAWAL') {
+      const debited = await prisma.bankAccount.updateMany({
+        where: { id: account.id, status: 'ACTIVE', balance: { gte: numAmount } },
+        data: { balance: { decrement: numAmount } },
+      });
+      if (debited.count !== 1) {
+        const err = new Error('Insufficient funds.');
+        err.status = 400;
+        throw err;
+      }
+      const updatedAccount = await prisma.bankAccount.findUnique({ where: { id: account.id } });
+      const newBalance = Number(updatedAccount.balance);
+
+      const createdTx = await prisma.transaction.create({
+        data: {
+          user_id: userId,
+          account_id: account.id,
+          transaction_type: 'WITHDRAWAL',
+          amount: numAmount,
+          description: description || 'ATM cash withdrawal (biometric verified)',
+          status: 'COMPLETED',
+          reference_number: refNumber,
+          category: category.category,
+          category_confidence: category.confidence,
+          ...(idempotencyKey ? { idempotency_key: String(idempotencyKey) } : {}),
+        },
+      });
+
+      await prisma.securityEvent.create({
+        data: {
+          user_id: userId,
+          event_type: 'TRANSACTION_SUCCESS',
+          severity: numAmount >= 10000 ? 'MEDIUM' : 'LOW',
+          description: `Withdrawal of ₹${numAmount.toLocaleString('en-IN')} authorized via ${verifyMethod}.`,
+          ip_address: req?.ip,
+          device_reference: req?.headers['user-agent'],
+        },
+      });
+
+      return { transaction: createdTx, newBalance, accountMasked: account.account_number_masked };
+    }
+
+    if (transactionType === 'TRANSFER') {
+      let recipientPrimaryAccount = null;
+      if (recipientUserId) {
+        recipientPrimaryAccount = await prisma.bankAccount.findFirst({
+          where: { user_id: recipientUserId, is_primary: true, status: 'ACTIVE' },
+        });
+        if (!recipientPrimaryAccount) {
+          const err = new Error('A valid active recipient account is required.');
+          err.status = 400;
+          throw err;
+        }
+      }
+
+      const debited = await prisma.bankAccount.updateMany({
+        where: { id: account.id, status: 'ACTIVE', balance: { gte: numAmount } },
+        data: { balance: { decrement: numAmount } },
+      });
+      if (debited.count !== 1) {
+        const err = new Error('Insufficient funds.');
+        err.status = 400;
+        throw err;
+      }
+      const senderAccount = await prisma.bankAccount.findUnique({ where: { id: account.id } });
+      const senderNewBalance = Number(senderAccount.balance);
+
+      const senderTx = await prisma.transaction.create({
+        data: {
+          user_id: userId,
+          account_id: account.id,
+          transaction_type: 'TRANSFER',
+          amount: numAmount,
+          description: description || `Transfer to ${recipientName || 'recipient'}`,
+          recipient_name: recipientName || null,
+          recipient_account: recipientAccount || null,
+          status: 'COMPLETED',
+          reference_number: refNumber,
+          category: category.category,
+          category_confidence: category.confidence,
+        },
+      });
+
+      if (recipientUserId) {
+        await prisma.bankAccount.update({
+          where: { id: recipientPrimaryAccount.id },
+          data: { balance: { increment: numAmount } },
+        });
+
+        const senderUser = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { full_name: true },
+        });
+
+        await prisma.transaction.create({
+          data: {
+            user_id: recipientUserId,
+            account_id: recipientPrimaryAccount.id,
+            transaction_type: 'DEPOSIT',
+            amount: numAmount,
+            description: `Received transfer from ${senderUser?.full_name || 'iCash user'}`,
+            recipient_name: senderUser?.full_name || null,
+            status: 'COMPLETED',
+            reference_number: `TX_REC_${crypto.randomUUID()}`,
+            category: SmartExpenseService.categorize(
+              `Received transfer from ${senderUser?.full_name || 'iCash user'}`,
+              'DEPOSIT'
+            ).category,
+            category_confidence: 0.98,
+          },
+        });
+      }
+
+      await prisma.securityEvent.create({
+        data: {
+          user_id: userId,
+          event_type: 'TRANSFER_SUCCESS',
+          severity: numAmount >= 20000 ? 'HIGH' : 'LOW',
+          description: `Transfer of ₹${numAmount.toLocaleString('en-IN')} to ${recipientName || 'external'} authorized via ${verifyMethod}.`,
+          ip_address: req?.ip,
+          device_reference: req?.headers['user-agent'],
+        },
+      });
+
+      return {
+        transaction: senderTx,
+        newBalance: senderNewBalance,
+        accountMasked: account.account_number_masked,
+      };
+    }
+
+    if (transactionType === 'DEPOSIT') {
+      await prisma.bankAccount.update({
+        where: { id: account.id },
+        data: { balance: { increment: numAmount } },
+      });
+      const depositedAccount = await prisma.bankAccount.findUnique({ where: { id: account.id } });
+      const newBalance = Number(depositedAccount.balance);
+
+      const createdTx = await prisma.transaction.create({
+        data: {
+          user_id: userId,
+          account_id: account.id,
+          transaction_type: 'DEPOSIT',
+          amount: numAmount,
+          description: description || 'Account top-up / deposit',
+          status: 'COMPLETED',
+          reference_number: refNumber,
+          category: category.category,
+          category_confidence: category.confidence,
+          ...(idempotencyKey ? { idempotency_key: String(idempotencyKey) } : {}),
+        },
+      });
+
+      return { transaction: createdTx, newBalance, accountMasked: account.account_number_masked };
+    }
+
+    throw new Error(`Unsupported transaction type: ${transactionType}`);
   }
 
   /**
@@ -646,78 +905,86 @@ class TransactionService {
     // Balance is verified atomically inside the $transaction block (TOCTOU-safe).
 
     // Atomically release funds and generate audit transaction record
-    return await prisma.$transaction(async (tx) => {
-      // Claim is a compare-and-set: concurrent OTP submissions can consume
-      // the delegation only once.
-      const claimed = await tx.delegatedWithdrawal.updateMany({
-        where: {
-          id: delegation.id,
-          status: 'PENDING',
-          expires_at: { gt: new Date() },
-          attempt_count: { lt: 5 }, // Cannot claim a locked delegation
-        },
-        data: { status: 'USED' },
-      });
-      if (claimed.count !== 1) {
-        const err = new Error('This withdrawal request has already been completed.');
-        err.status = 400;
-        throw err;
-      }
+    return await prisma.$transaction(
+      async (tx) => {
+        // Claim is a compare-and-set: concurrent OTP submissions can consume
+        // the delegation only once.
+        const claimed = await tx.delegatedWithdrawal.updateMany({
+          where: {
+            id: delegation.id,
+            status: 'PENDING',
+            expires_at: { gt: new Date() },
+            attempt_count: { lt: 5 }, // Cannot claim a locked delegation
+          },
+          data: { status: 'USED' },
+        });
+        if (claimed.count !== 1) {
+          const err = new Error('This withdrawal request has already been completed.');
+          err.status = 400;
+          throw err;
+        }
 
-      const debited = await tx.bankAccount.updateMany({
-        where: { id: primaryAccount.id, status: 'ACTIVE', balance: { gte: amount } },
-        data: { balance: { decrement: amount } },
-      });
-      if (debited.count !== 1) {
-        const err = new Error("Account holder's balance is insufficient.");
-        err.status = 400;
-        throw err;
-      }
-      const updatedAccount = await tx.bankAccount.findUnique({ where: { id: primaryAccount.id } });
-      const newBalance = Number(updatedAccount.balance);
+        const debited = await tx.bankAccount.updateMany({
+          where: { id: primaryAccount.id, status: 'ACTIVE', balance: { gte: amount } },
+          data: { balance: { decrement: amount } },
+        });
+        if (debited.count !== 1) {
+          const err = new Error("Account holder's balance is insufficient.");
+          err.status = 400;
+          throw err;
+        }
+        const updatedAccount = await tx.bankAccount.findUnique({
+          where: { id: primaryAccount.id },
+        });
+        const newBalance = Number(updatedAccount.balance);
 
-      const transaction = await tx.transaction.create({
-        data: {
-          user_id: accountHolder.id,
-          account_id: primaryAccount.id,
-          transaction_type: 'WITHDRAWAL',
+        const transaction = await tx.transaction.create({
+          data: {
+            user_id: accountHolder.id,
+            account_id: primaryAccount.id,
+            transaction_type: 'WITHDRAWAL',
+            amount,
+            description: `Emergency Cash Withdrawal by Authorized Representative (${authorizedName} - ${authorizedPhone})`,
+            recipient_name: authorizedName,
+            recipient_account: authorizedPhone,
+            status: 'COMPLETED',
+            reference_number: `TX_EMERGENCY_${Date.now()}`,
+            category: 'CASH',
+            category_confidence: 0.98,
+          },
+        });
+
+        await SecurityService.recordEvent({
+          userId: accountHolder.id,
+          eventType: 'EMERGENCY_WITHDRAWAL_SUCCESS',
+          severity: 'MEDIUM',
+          description: `₹${amount} released to authorized representative ${authorizedName} (${authorizedPhone}) after successful OTP verification.`,
+          ipAddress: req?.ip,
+          deviceReference: req?.headers ? req.headers['user-agent'] : null,
+        });
+
+        return {
+          ok: true,
+          transactionId: transaction.id,
+          referenceNumber: transaction.reference_number,
+          accountHolderName: accountHolder.full_name,
+          accountHolderPhoneMasked: TransactionService.maskPhone(accountHolder.phone),
+          authorizedPersonName: authorizedName,
+          authorizedPersonPhone: authorizedPhone,
+          authorizedIdType,
+          authorizedIdNumber,
+          reason,
           amount,
-          description: `Emergency Cash Withdrawal by Authorized Representative (${authorizedName} - ${authorizedPhone})`,
-          recipient_name: authorizedName,
-          recipient_account: authorizedPhone,
-          status: 'COMPLETED',
-          reference_number: `TX_EMERGENCY_${Date.now()}`,
-          category: 'CASH',
-          category_confidence: 0.98,
-        },
-      });
-
-      await SecurityService.recordEvent({
-        userId: accountHolder.id,
-        eventType: 'EMERGENCY_WITHDRAWAL_SUCCESS',
-        severity: 'MEDIUM',
-        description: `₹${amount} released to authorized representative ${authorizedName} (${authorizedPhone}) after successful OTP verification.`,
-        ipAddress: req?.ip,
-        deviceReference: req?.headers ? req.headers['user-agent'] : null,
-      });
-
-      return {
-        ok: true,
-        transactionId: transaction.id,
-        referenceNumber: transaction.reference_number,
-        accountHolderName: accountHolder.full_name,
-        accountHolderPhoneMasked: TransactionService.maskPhone(accountHolder.phone),
-        authorizedPersonName: authorizedName,
-        authorizedPersonPhone: authorizedPhone,
-        authorizedIdType,
-        authorizedIdNumber,
-        reason,
-        amount,
-        remainingBalance: newBalance,
-        completedAt: transaction.created_at,
-        message: `₹${amount.toLocaleString('en-IN')} successfully authorized and released to ${authorizedName}.`,
-      };
-    });
+          remainingBalance: newBalance,
+          completedAt: transaction.created_at,
+          message: `₹${amount.toLocaleString('en-IN')} successfully authorized and released to ${authorizedName}.`,
+        };
+      },
+      {
+        maxWait: 15000,
+        timeout: 30000,
+      }
+    );
   }
 
   /**

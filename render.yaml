@@ -16,8 +16,6 @@ services:
         value: twilio
       - key: BIOMETRIC_PROVIDER
         value: demo
-      - key: LIVENESS_SERVER_URL
-        value: https://icash-liveness.onrender.com
       - key: AUTO_SYNC_DB
         value: "true"
       - key: DATABASE_URL
@@ -41,14 +39,12 @@ services:
         sync: false
       - key: EMAIL_FROM
         sync: false
-
-  - type: web
-    name: icash-liveness
-    env: python
-    rootDir: liveness_server
-    plan: free
-    buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 120 app:app
-    envVars:
-      - key: LIVENESS_ALLOWED_ORIGINS
-        value: https://icash.onrender.com,https://icash-server.onrender.com
+      # Liveness & Face Template secrets (set these in Render dashboard)
+      - key: FACE_TEMPLATE_KEY
+        sync: false
+      - key: FACE_MATCH_MAX
+        sync: false
+      - key: LIVENESS_CHALLENGE_TTL_SECONDS
+        sync: false
+      - key: BIO_TOKEN_JWT_SECRET
+        sync: false

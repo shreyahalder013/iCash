@@ -106,13 +106,7 @@ iCash/
 │   ├── tests/                    # Jest + Supertest automated test suites
 │   ├── docker-compose.yml        # PostgreSQL container setup
 │   └── package.json
-├── liveness_server/              # Python OpenCV + dlib Liveness Microservice
-│   ├── app.py                    # Flask server with EAR eye-blink detection (Port 5001)
-│   ├── download_model.py         # Automated downloader for dlib 68-point landmarks
-│   ├── decompress.py             # BZ2 decompression helper
-│   ├── requirements.txt          # Python dependencies (flask, opencv, dlib, scipy)
-│   └── shape_predictor_68_face_landmarks.dat # 68-point facial landmarks model
-├── package.json                  # Root scripts (build, dev, test, liveness)
+├── package.json                  # Root scripts (build, dev, test)
 └── README.md
 ```
 
@@ -123,24 +117,15 @@ iCash/
 ### 1. Prerequisites
 
 - **Node.js** >= 18.0
-- **Python** >= 3.10
 - **PostgreSQL** or Docker (for database)
 
 ---
 
 ### 2. Install Dependencies
 
-#### Node.js Dependencies:
-
 ```bash
 npm install
 cd backend && npm install && cd ..
-```
-
-#### Python Liveness Server Dependencies:
-
-```bash
-pip install -r liveness_server/requirements.txt
 ```
 
 ---
@@ -185,14 +170,6 @@ Without an API key, the Copilot uses a clearly labelled local, transaction-groun
 ```bash
 npm run dev
 # App will run on http://localhost:4000
-```
-
-#### B. Start the Real-Time Liveness Detection Server:
-
-```bash
-npm run liveness
-# or: python liveness_server/app.py
-# Liveness Microservice will run on http://localhost:5001
 ```
 
 ---

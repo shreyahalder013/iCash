@@ -35,6 +35,7 @@ const savingsRoutes = require('./savingsRoutes');
 const merchantAnalyticsRoutes = require('./merchantAnalyticsRoutes');
 const subscriptionRoutes = require('./subscriptionRoutes');
 const assistantRoutes = require('./assistantRoutes');
+const livenessRoutes = require('./livenessRoutes');
 
 /**
  * Registers all API routes onto the given Express application.
@@ -55,6 +56,7 @@ function registerRoutes(app) {
   }
   app.use('/api/otp', otpRoutes);
   app.use('/api/biometric', biometricRoutes);
+  app.use('/api/liveness', livenessRoutes);
   app.use('/api/accounts', accountRoutes);
   app.use('/api/transactions', transactionRoutes);
   app.use('/api/security', securityRoutes);
@@ -99,4 +101,5 @@ module.exports = {
   merchantAnalyticsRoutes,
   subscriptionRoutes,
   assistantRoutes,
+  livenessRoutes,
 };

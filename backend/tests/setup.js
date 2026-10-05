@@ -13,7 +13,7 @@ module.exports = async () => {
   } catch (err) {
     console.error('Failed to run global test seed:', err);
     throw err;
-  } finally {
-    await prisma.$disconnect();
   }
+  // Do NOT disconnect Prisma here - tests need the connection pool.
+  // Each test file's afterAll handles its own cleanup.
 };

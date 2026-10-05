@@ -8,7 +8,6 @@
     "build": "node scripts/build.js",
     "start": "node backend/src/server.js",
     "dev": "node --watch backend/src/server.js",
-    "liveness": "python liveness_server/app.py",
     "prisma:generate": "prisma generate --schema=backend/prisma/schema.prisma",
     "prisma:push": "prisma db push --schema=backend/prisma/schema.prisma",
     "prisma:migrate": "prisma migrate dev --schema=backend/prisma/schema.prisma",
@@ -23,6 +22,7 @@
   "dependencies": {
     "@better-auth/core": "^1.7.5",
     "@better-auth/infra": "^0.4.9",
+    "@mediapipe/tasks-vision": "^0.10.14",
     "@prisma/client": "^6.4.1",
     "@tensorflow-models/face-landmarks-detection": "^1.0.6",
     "@tensorflow/tfjs-backend-webgl": "^4.22.0",

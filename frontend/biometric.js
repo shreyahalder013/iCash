@@ -2100,3 +2100,97 @@ window.addEventListener('pagehide', () => {
     if (typeof stopAllCameraLoops === 'function') stopAllCameraLoops();
   } catch (_) {}
 });
+
+/* ============================================================
+ * NEW: FaceLiveness Integration Wrappers
+ * Replaces old liveness_server-based beginLoginScan/beginRegisterScan
+ * with client-side MediaPipe FaceLandmarker (WASM) + /api/liveness API
+ * ============================================================ */
+
+// New wrapper for login scan using FaceLivenessIntegration
+async function beginLoginScan() {
+  if (window.teardownFaceLiveness) window.teardownFaceLiveness();
+  if (window.initLoginLiveness) {
+    const targetUser = window._loginTargetUser || null;
+    await window.initLoginLiveness(targetUser);
+  } else {
+    console.warn('[FaceLiveness] Integration not loaded, falling back to legacy');
+    // Fallback to original implementation would go here if needed
+  }
+}
+
+// New wrapper for register scan using FaceLivenessIntegration
+async function beginRegisterScan() {
+  if (window.teardownFaceLiveness) window.teardownFaceLiveness();
+  if (window.initRegisterLiveness) {
+    await window.initRegisterLiveness();
+  } else {
+    console.warn('[FaceLiveness] Integration not loaded, falling back to legacy');
+  }
+}
+
+// New teardown function for FaceLiveness
+function teardownLoginScan() {
+  if (window.teardownFaceLiveness) window.teardownFaceLiveness();
+  // Also clear any legacy state
+  _loginActive = false;
+  if (_loginOverlayTimer) {
+    clearTimeout(_loginOverlayTimer);
+    _loginOverlayTimer = null;
+  }
+  BlinkStateMachine.reset();
+  CameraManager.stop(document.getElementById('login-video'));
+  if (window._loginLivenessSessionId) {
+    window.iCashApi.liveness?.reset(window._loginLivenessSessionId).catch(() => {});
+    window._loginLivenessSessionId = null;
+  }
+}
+
+function teardownRegisterScan() {
+  if (window.teardownFaceLiveness) window.teardownFaceLiveness();
+  _regActive = false;
+  const video = document.getElementById('reg-video');
+  CameraManager.stop(video);
+  const oc = document.getElementById('reg-overlay-canvas');
+  if (oc) oc.getContext('2d').clearRect(0, 0, oc.width, oc.height);
+  if (window._regLivenessSessionId) {
+    window.iCashApi.liveness?.reset(window._regLivenessSessionId).catch(() => {});
+    window._regLivenessSessionId = null;
+  }
+}
+
+// Backward compatibility: handleLivenessSuccess/fallback/cancel for existing callers
+window.handleLivenessSuccess = function(detail) {
+  // This will be called by FaceLivenessIntegration onSuccess
+  // The existing completeLoginIdentityAndSession logic handles the rest
+  console.log('[FaceLiveness] Login success callback:', detail);
+};
+
+window.handleLivenessFallback = function() {
+  console.log('[FaceLiveness] Fallback to PIN');
+  // Navigate to PIN login screen
+  goTo('screen-pin-login');
+};
+
+window.handleLivenessCancel = function() {
+  console.log('[FaceLiveness] Cancelled');
+  // Clean up and return to welcome
+  teardownLoginScan();
+  goTo('screen-welcome');
+};
+
+window.handleRegisterLivenessSuccess = function(detail) {
+  console.log('[FaceLiveness] Register success callback:', detail);
+  // The existing completeRegisterIdentityAndSession logic handles the rest
+};
+
+window.handleRegisterLivenessFallback = function() {
+  console.log('[FaceLiveness] Register fallback');
+  goTo('screen-register-form');
+};
+
+window.handleRegisterLivenessCancel = function() {
+  console.log('[FaceLiveness] Register cancelled');
+  teardownRegisterScan();
+  goTo('screen-register-form');
+};

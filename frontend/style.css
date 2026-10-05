@@ -4269,3 +4269,1139 @@ body.reduced-motion .mic-fab { animation: none !important; }
   body { background: white; color: black; }
   .card { border: 1px solid #ccc; box-shadow: none; }
 }
+
+/* ============================================================
+   POLISHED LOGIN UI OVERRIDES
+   High-specificity styles to enhance the biometric login UI
+   ============================================================ */
+
+/* ============================================================
+   CAMERA CONTAINER — Full-bleed with subtle vignette
+   ============================================================ */
+#screen-login-scan .camera-container,
+#screen-register-scan .camera-container,
+.biometric-auth-card .camera-container {
+  position: relative;
+  width: 100%;
+  max-width: 520px;
+  aspect-ratio: 4 / 3;
+  border-radius: 20px;
+  overflow: hidden;
+  background: #02040a;
+  border: none;
+  box-shadow: 
+    0 0 0 1px rgba(255,255,255,0.05),
+    0 20px 60px -10px rgba(0,0,0,0.5),
+    inset 0 1px 0 rgba(255,255,255,0.03);
+  margin-bottom: 8px;
+}
+
+#screen-login-scan .camera-container::before,
+#screen-register-scan .camera-container::before,
+.biometric-auth-card .camera-container::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, transparent 50%, rgba(0,0,0,0.4) 100%);
+  z-index: 3;
+}
+
+#screen-login-scan .camera-container video,
+#screen-register-scan .camera-container video,
+.biometric-auth-card .camera-container video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);
+  filter: contrast(1.05) brightness(1.02);
+}
+
+#screen-login-scan .camera-container canvas,
+#screen-register-scan .camera-container canvas,
+.biometric-auth-card .camera-container canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  transform: scaleX(-1);
+}
+
+/* Face Guide — Elegant oval with animated corners */
+#screen-login-scan .face-guide,
+#screen-register-scan .face-guide,
+.biometric-auth-card .face-guide {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 4;
+}
+
+#screen-login-scan .face-guide-frame,
+#screen-register-scan .face-guide-frame,
+.biometric-auth-card .face-guide-frame {
+  width: 230px;
+  height: 285px;
+  border: 2px solid transparent;
+  border-radius: 50% / 45%;
+  box-shadow: 
+    0 0 0 9999px rgba(2,4,10,0.65),
+    0 0 40px -5px rgba(37, 99, 235, 0.35),
+    inset 0 0 60px rgba(37, 99, 235, 0.08);
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  background: 
+    radial-gradient(ellipse at center, rgba(37,99,235,0.03) 0%, transparent 70%);
+  position: relative;
+}
+
+/* Animated corner brackets */
+#screen-login-scan .face-guide-corners,
+#screen-register-scan .face-guide-corners,
+.biometric-auth-card .face-guide-corners {
+  position: absolute;
+  inset: 0;
+  border-radius: 50% / 45%;
+  pointer-events: none;
+}
+
+#screen-login-scan .corner,
+#screen-register-scan .corner,
+.biometric-auth-card .corner {
+  position: absolute;
+  width: 28px;
+  height: 28px;
+  border: 3px solid var(--color-brand);
+  border-radius: 6px;
+  opacity: 0.9;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  filter: drop-shadow(0 0 8px rgba(37,99,235,0.6));
+}
+
+#screen-login-scan .corner.tl,
+#screen-register-scan .corner.tl,
+.biometric-auth-card .corner.tl { top: -4px; left: -4px; border-right: none; border-bottom: none; border-top-left-radius: 12px; }
+#screen-login-scan .corner.tr,
+#screen-register-scan .corner.tr,
+.biometric-auth-card .corner.tr { top: -4px; right: -4px; border-left: none; border-bottom: none; border-top-right-radius: 12px; }
+#screen-login-scan .corner.bl,
+#screen-register-scan .corner.bl,
+.biometric-auth-card .corner.bl { bottom: -4px; left: -4px; border-right: none; border-top: none; border-bottom-left-radius: 12px; }
+#screen-login-scan .corner.br,
+#screen-register-scan .corner.br,
+.biometric-auth-card .corner.br { bottom: -4px; right: -4px; border-left: none; border-top: none; border-bottom-right-radius: 12px; }
+
+/* State variants */
+#screen-login-scan .face-guide-frame.good,
+#screen-login-scan .face-guide-frame.centered,
+#screen-register-scan .face-guide-frame.good,
+#screen-register-scan .face-guide-frame.centered,
+.biometric-auth-card .face-guide-frame.good,
+.biometric-auth-card .face-guide-frame.centered {
+  border-color: var(--color-success);
+  box-shadow: 
+    0 0 0 9999px rgba(2,4,10,0.65),
+    0 0 50px -5px rgba(5, 150, 105, 0.5),
+    inset 0 0 60px rgba(5, 150, 105, 0.12);
+  background: radial-gradient(ellipse at center, rgba(5,150,105,0.04) 0%, transparent 70%);
+}
+
+#screen-login-scan .face-guide-frame.good .corner,
+#screen-login-scan .face-guide-frame.centered .corner,
+#screen-register-scan .face-guide-frame.good .corner,
+#screen-register-scan .face-guide-frame.centered .corner,
+.biometric-auth-card .face-guide-frame.good .corner,
+.biometric-auth-card .face-guide-frame.centered .corner {
+  border-color: var(--color-success);
+  filter: drop-shadow(0 0 10px rgba(5,150,105,0.8));
+  animation: corner-pulse 2s ease-in-out infinite;
+}
+
+@keyframes corner-pulse {
+  0%, 100% { opacity: 0.9; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.05); }
+}
+
+#screen-login-scan .face-guide-frame.too-far,
+#screen-login-scan .face-guide-frame.too-close,
+#screen-login-scan .face-guide-frame.off-center,
+#screen-register-scan .face-guide-frame.too-far,
+#screen-register-scan .face-guide-frame.too-close,
+#screen-register-scan .face-guide-frame.off-center,
+.biometric-auth-card .face-guide-frame.too-far,
+.biometric-auth-card .face-guide-frame.too-close,
+.biometric-auth-card .face-guide-frame.off-center {
+  border-color: var(--color-warning);
+  box-shadow: 
+    0 0 0 9999px rgba(2,4,10,0.65),
+    0 0 40px -5px rgba(217, 119, 6, 0.4),
+    inset 0 0 60px rgba(217, 119, 6, 0.08);
+}
+
+#screen-login-scan .face-guide-frame.too-far .corner,
+#screen-login-scan .face-guide-frame.too-close .corner,
+#screen-login-scan .face-guide-frame.off-center .corner,
+#screen-register-scan .face-guide-frame.too-far .corner,
+#screen-register-scan .face-guide-frame.too-close .corner,
+#screen-register-scan .face-guide-frame.off-center .corner,
+.biometric-auth-card .face-guide-frame.too-far .corner,
+.biometric-auth-card .face-guide-frame.too-close .corner,
+.biometric-auth-card .face-guide-frame.off-center .corner {
+  border-color: var(--color-warning);
+  filter: drop-shadow(0 0 8px rgba(217,119,6,0.7));
+  animation: corner-shake 0.5s ease-in-out infinite;
+}
+
+@keyframes corner-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-3px); }
+  75% { transform: translateX(3px); }
+}
+
+@keyframes corner-pulse {
+  0%, 100% { opacity: 0.9; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.05); }
+}
+
+/* Camera Status Overlay — Polished */
+#screen-login-scan .camera-status-overlay,
+#screen-register-scan .camera-status-overlay,
+.biometric-auth-card .camera-status-overlay {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: linear-gradient(135deg, rgba(10,15,30,0.95), rgba(5,10,20,0.98));
+  border: 1px solid rgba(37,99,235,0.3);
+  padding: 10px 22px;
+  border-radius: 50px;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  z-index: 5;
+  pointer-events: none;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 
+    0 8px 32px rgba(0,0,0,0.4),
+    0 0 0 1px rgba(37,99,235,0.15);
+  animation: status-slide-in 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes status-slide-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(20px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+#screen-login-scan .camera-status-overlay.hidden,
+#screen-register-scan .camera-status-overlay.hidden,
+.biometric-auth-card .camera-status-overlay.hidden {
+  opacity: 0;
+  transform: translateX(-50%) translateY(-10px);
+  pointer-events: none;
+}
+
+#screen-login-scan .status-text,
+#screen-register-scan .status-text,
+.biometric-auth-card .status-text {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  letter-spacing: 0.2px;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+}
+
+/* Instruction Banner — Polished */
+#screen-login-scan .instruction-banner,
+#screen-register-scan .instruction-banner,
+.biometric-auth-card .instruction-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 14px 24px;
+  border-radius: 14px;
+  font-size: 14px;
+  font-weight: 500;
+  margin-bottom: 20px;
+  text-align: center;
+  min-height: 56px;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4px 20px -4px rgba(0,0,0,0.3);
+  border: 1px solid transparent;
+}
+
+#screen-login-scan .instruction-banner::before,
+#screen-register-scan .instruction-banner::before,
+.biometric-auth-card .instruction-banner::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  animation: instruction-pulse 1.5s ease-in-out infinite;
+}
+
+#screen-login-scan .instruction-banner.info,
+#screen-register-scan .instruction-banner.info,
+.biometric-auth-card .instruction-banner.info {
+  background: linear-gradient(135deg, rgba(37,99,235,0.15), rgba(37,99,235,0.08));
+  border: 1px solid rgba(37,99,235,0.25);
+  color: #60a5fa;
+}
+#screen-login-scan .instruction-banner.info::before,
+#screen-register-scan .instruction-banner.info::before,
+.biometric-auth-card .instruction-banner.info::before { background: #3b82f6; }
+
+#screen-login-scan .instruction-banner.warning,
+#screen-register-scan .instruction-banner.warning,
+.biometric-auth-card .instruction-banner.warning {
+  background: linear-gradient(135deg, rgba(217,119,6,0.15), rgba(217,119,6,0.08));
+  border: 1px solid rgba(217,119,6,0.3);
+  color: #fcd34d;
+}
+#screen-login-scan .instruction-banner.warning::before,
+#screen-register-scan .instruction-banner.warning::before,
+.biometric-auth-card .instruction-banner.warning::before { background: #f59e0b; }
+
+#screen-login-scan .instruction-banner.bad,
+#screen-register-scan .instruction-banner.bad,
+.biometric-auth-card .instruction-banner.bad {
+  background: linear-gradient(135deg, rgba(220,38,38,0.15), rgba(220,38,38,0.08));
+  border: 1px solid rgba(220,38,38,0.3);
+  color: #fca5a5;
+}
+#screen-login-scan .instruction-banner.bad::before,
+#screen-register-scan .instruction-banner.bad::before,
+.biometric-auth-card .instruction-banner.bad::before { background: #ef4444; }
+
+#screen-login-scan .instruction-banner.ok,
+#screen-register-scan .instruction-banner.ok,
+.biometric-auth-card .instruction-banner.ok {
+  background: linear-gradient(135deg, rgba(5,150,105,0.15), rgba(5,150,105,0.08));
+  border: 1px solid rgba(5,150,105,0.3);
+  color: #6ee7b7;
+}
+#screen-login-scan .instruction-banner.ok::before,
+#screen-register-scan .instruction-banner.ok::before,
+.biometric-auth-card .instruction-banner.ok::before { background: #10b981; }
+
+@keyframes instruction-pulse {
+  0%, 100% { opacity: 0.6; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
+
+/* Camera Error Fallback — Polished */
+#screen-login-scan .cam-fallback,
+#screen-register-scan .cam-fallback,
+.biometric-auth-card .cam-fallback {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 32px 24px;
+  background: linear-gradient(135deg, rgba(220,38,38,0.12), rgba(220,38,38,0.06));
+  border: 1px solid rgba(220,38,38,0.25);
+  border-radius: 16px;
+  margin-bottom: 16px;
+  animation: fallback-in 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes fallback-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+#screen-login-scan .cam-fallback svg,
+#screen-register-scan .cam-fallback svg,
+.biometric-auth-card .cam-fallback svg {
+  width: 48px;
+  height: 48px;
+  color: #ef4444;
+  filter: drop-shadow(0 4px 12px rgba(239,68,68,0.3));
+  animation: icon-bounce 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes icon-bounce {
+  0% { transform: scale(0.6); opacity: 0; }
+  60% { transform: scale(1.1); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+#screen-login-scan .cam-fallback-text,
+#screen-register-scan .cam-fallback-text,
+.biometric-auth-card .cam-fallback-text {
+  text-align: center;
+  max-width: 360px;
+}
+
+#screen-login-scan .cam-fallback-title,
+#screen-register-scan .cam-fallback-title,
+.biometric-auth-card .cam-fallback-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #fca5a5;
+  margin-bottom: 6px;
+}
+
+#screen-login-scan .cam-fallback-desc,
+#screen-register-scan .cam-fallback-desc,
+.biometric-auth-card .cam-fallback-desc {
+  font-size: 13px;
+  color: #fda4a4;
+  line-height: 1.5;
+}
+
+/* Button Row — Polished */
+#screen-login-scan .btn-row,
+#screen-register-scan .btn-row,
+.biometric-auth-card .btn-row {
+  display: flex;
+  gap: 12px;
+  margin-top: 20px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+#screen-login-scan .btn-row .btn,
+#screen-register-scan .btn-row .btn,
+.biometric-auth-card .btn-row .btn {
+  min-width: 140px;
+  padding: 14px 28px;
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 12px;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+#screen-login-scan .btn-row .btn::before,
+#screen-register-scan .btn-row .btn::before,
+.biometric-auth-card .btn-row .btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.1), transparent);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+#screen-login-scan .btn-row .btn:hover:not(:disabled)::before,
+#screen-register-scan .btn-row .btn:hover:not(:disabled)::before,
+.biometric-auth-card .btn-row .btn:hover:not(:disabled)::before {
+  opacity: 1;
+}
+
+#screen-login-scan .btn-row .btn-primary,
+#screen-register-scan .btn-row .btn-primary,
+.biometric-auth-card .btn-row .btn-primary {
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  border: none;
+  color: #fff;
+  box-shadow: 
+    0 4px 20px rgba(37,99,235,0.4),
+    0 0 0 1px rgba(37,99,235,0.2) inset;
+}
+#screen-login-scan .btn-row .btn-primary:hover:not(:disabled),
+#screen-register-scan .btn-row .btn-primary:hover:not(:disabled),
+.biometric-auth-card .btn-row .btn-primary:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 
+    0 8px 30px rgba(37,99,235,0.5),
+    0 0 0 1px rgba(37,99,235,0.3) inset;
+}
+
+#screen-login-scan .btn-row .btn-ghost,
+#screen-register-scan .btn-row .btn-ghost,
+.biometric-auth-card .btn-row .btn-ghost {
+  background: rgba(255,255,255,0.04);
+  color: var(--color-text-muted);
+  border: 1px solid rgba(255,255,255,0.1);
+}
+#screen-login-scan .btn-row .btn-ghost:hover:not(:disabled),
+#screen-register-scan .btn-row .btn-ghost:hover:not(:disabled),
+.biometric-auth-card .btn-row .btn-ghost:hover:not(:disabled) {
+  background: rgba(37,99,235,0.08);
+  color: var(--color-brand);
+  border-color: var(--color-brand);
+}
+
+/* Fallback Link Button — Polished */
+#screen-login-scan .link-btn.fallback-btn,
+#screen-register-scan .link-btn.fallback-btn,
+.biometric-auth-card .link-btn.fallback-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 20px;
+  padding: 14px 24px;
+  background: linear-gradient(135deg, rgba(37,99,235,0.08), rgba(37,99,235,0.04));
+  border: 1px solid rgba(37,99,235,0.2);
+  border-radius: 12px;
+  color: var(--color-brand);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  text-decoration: none;
+  width: 100%;
+  max-width: 400px;
+  justify-content: center;
+}
+
+#screen-login-scan .link-btn.fallback-btn:hover,
+#screen-register-scan .link-btn.fallback-btn:hover,
+.biometric-auth-card .link-btn.fallback-btn:hover {
+  background: linear-gradient(135deg, rgba(37,99,235,0.15), rgba(37,99,235,0.08));
+  border-color: var(--color-brand);
+  color: #60a5fa;
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px rgba(37,99,235,0.15);
+}
+
+#screen-login-scan .link-btn.fallback-btn:focus-visible,
+#screen-register-scan .link-btn.fallback-btn:focus-visible,
+.biometric-auth-card .link-btn.fallback-btn:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 3px;
+}
+
+#screen-login-scan .link-btn.fallback-btn svg,
+#screen-register-scan .link-btn.fallback-btn svg,
+.biometric-auth-card .link-btn.fallback-btn svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+/* Progress Steps — Polished */
+#screen-login-scan .verification-progress,
+#screen-register-scan .verification-progress,
+.biometric-auth-card .verification-progress {
+  margin-bottom: 24px;
+  width: 100%;
+  max-width: 480px;
+}
+
+#screen-login-scan .progress-header h2,
+#screen-register-scan .progress-header h2,
+.biometric-auth-card .progress-header h2 {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-faint);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-family: var(--font-mono);
+  margin-bottom: 16px;
+  text-align: center;
+}
+
+#screen-login-scan .progress-steps,
+#screen-register-scan .progress-steps,
+.biometric-auth-card .progress-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+#screen-login-scan .progress-step,
+#screen-register-scan .progress-step,
+.biometric-auth-card .progress-step {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  background: linear-gradient(135deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 14px;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+#screen-login-scan .progress-step::before,
+#screen-register-scan .progress-step::before,
+.biometric-auth-card .progress-step::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+  background: transparent;
+  transition: all 0.3s;
+}
+
+#screen-login-scan .progress-step.is-pending,
+#screen-register-scan .progress-step.is-pending,
+.biometric-auth-card .progress-step.is-pending {
+  opacity: 0.55;
+}
+
+#screen-login-scan .progress-step.is-pending::before,
+#screen-register-scan .progress-step.is-pending::before,
+.biometric-auth-card .progress-step.is-pending::before {
+  background: linear-gradient(180deg, transparent, rgba(255,255,255,0.03));
+}
+
+#screen-login-scan .progress-step.is-active,
+#screen-register-scan .progress-step.is-active,
+.biometric-auth-card .progress-step.is-active {
+  opacity: 1;
+  border-color: rgba(37,99,235,0.4);
+  background: linear-gradient(135deg, rgba(37,99,235,0.12), rgba(37,99,235,0.05));
+}
+#screen-login-scan .progress-step.is-active::before,
+#screen-register-scan .progress-step.is-active::before,
+.biometric-auth-card .progress-step.is-active::before {
+  background: var(--color-brand);
+  box-shadow: 0 0 12px var(--color-brand);
+  animation: active-glow 2s ease-in-out infinite;
+}
+
+@keyframes active-glow {
+  0%, 100% { opacity: 0.6; box-shadow: 0 0 8px var(--color-brand); }
+  50% { opacity: 1; box-shadow: 0 0 20px var(--color-brand); }
+}
+
+#screen-login-scan .progress-step.is-done,
+#screen-register-scan .progress-step.is-done,
+.biometric-auth-card .progress-step.is-done {
+  opacity: 1;
+  border-color: rgba(5,150,105,0.4);
+  background: linear-gradient(135deg, rgba(5,150,105,0.12), rgba(5,150,105,0.05));
+}
+#screen-login-scan .progress-step.is-done::before,
+#screen-register-scan .progress-step.is-done::before,
+.biometric-auth-card .progress-step.is-done::before {
+  background: var(--color-success);
+}
+
+#screen-login-scan .progress-step.is-error,
+#screen-register-scan .progress-step.is-error,
+.biometric-auth-card .progress-step.is-error {
+  border-color: rgba(220,38,38,0.4);
+  background: linear-gradient(135deg, rgba(220,38,38,0.12), rgba(220,38,38,0.05));
+}
+#screen-login-scan .progress-step.is-error::before,
+#screen-register-scan .progress-step.is-error::before,
+.biometric-auth-card .progress-step.is-error::before {
+  background: var(--color-error);
+}
+
+@keyframes active-glow {
+  0%, 100% { opacity: 0.6; box-shadow: 0 0 8px var(--color-brand); }
+  50% { opacity: 1; box-shadow: 0 0 20px var(--color-brand); }
+}
+
+#screen-login-scan .progress-step.is-done::before,
+#screen-register-scan .progress-step.is-done::before,
+.biometric-auth-card .progress-step.is-done::before {
+  background: var(--color-success);
+}
+
+#screen-login-scan .progress-step.is-error::before,
+#screen-register-scan .progress-step.is-error::before,
+.biometric-auth-card .progress-step.is-error::before {
+  background: var(--color-error);
+}
+
+@keyframes active-glow {
+  0%, 100% { opacity: 0.6; box-shadow: 0 0 8px var(--color-brand); }
+  50% { opacity: 1; box-shadow: 0 0 20px var(--color-brand); }
+}
+
+#screen-login-scan .step-indicator,
+#screen-register-scan .step-indicator,
+.biometric-auth-card .step-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  flex-shrink: 0;
+  z-index: 1;
+  background: rgba(255,255,255,0.03);
+  border: 2px solid rgba(255,255,255,0.08);
+  border-radius: 50%;
+  color: var(--color-text-faint);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+
+#screen-login-scan .progress-step.is-active .step-indicator,
+#screen-register-scan .progress-step.is-active .step-indicator,
+.biometric-auth-card .progress-step.is-active .step-indicator {
+  border-color: var(--color-brand);
+  color: var(--color-brand);
+  background: rgba(37,99,235,0.15);
+  box-shadow: 0 0 20px rgba(37,99,235,0.3);
+  animation: indicator-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes indicator-pulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 15px var(--color-brand); }
+  50% { transform: scale(1.08); box-shadow: 0 0 30px var(--color-brand); }
+}
+
+#screen-login-scan .progress-step.is-done .step-indicator,
+#screen-register-scan .progress-step.is-done .step-indicator,
+.biometric-auth-card .progress-step.is-done .step-indicator {
+  border-color: var(--color-success);
+  color: var(--color-success);
+  background: rgba(5,150,105,0.18);
+  box-shadow: 0 0 16px rgba(5,150,105,0.3);
+}
+
+#screen-login-scan .progress-step.is-error .step-indicator,
+#screen-register-scan .progress-step.is-error .step-indicator,
+.biometric-auth-card .progress-step.is-error .step-indicator {
+  border-color: var(--color-error);
+  color: var(--color-error);
+  background: rgba(220,38,38,0.15);
+}
+
+#screen-login-scan .step-indicator svg,
+#screen-register-scan .step-indicator svg,
+.biometric-auth-card .step-indicator svg {
+  width: 22px;
+  height: 22px;
+  stroke-width: 2.5;
+}
+
+#screen-login-scan .step-content,
+#screen-register-scan .step-content,
+.biometric-auth-card .step-content {
+  flex: 1;
+  text-align: left;
+  min-width: 0;
+}
+
+#screen-login-scan .step-label,
+#screen-register-scan .step-label,
+.biometric-auth-card .step-label {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--color-text);
+  letter-spacing: 0.1px;
+  margin-bottom: 2px;
+}
+
+#screen-login-scan .step-detail,
+#screen-register-scan .step-detail,
+.biometric-auth-card .step-detail {
+  display: block;
+  font-size: 11.5px;
+  color: var(--color-text-muted);
+  font-family: var(--font-sans);
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#screen-login-scan .progress-step.is-active .step-detail,
+#screen-register-scan .progress-step.is-active .step-detail,
+.biometric-auth-card .progress-step.is-active .step-detail {
+  color: var(--color-brand);
+  font-weight: 500;
+}
+
+#screen-login-scan .progress-step.is-done .step-detail,
+#screen-register-scan .progress-step.is-done .step-detail,
+.biometric-auth-card .progress-step.is-done .step-detail {
+  color: var(--color-success);
+}
+
+#screen-login-scan .progress-step.is-error .step-detail,
+#screen-register-scan .progress-step.is-error .step-detail,
+.biometric-auth-card .progress-step.is-error .step-detail {
+  color: var(--color-error);
+}
+
+/* Status Panel — Polished */
+#screen-login-scan .status-panel,
+#screen-register-scan .status-panel,
+.biometric-auth-card .status-panel {
+  background: linear-gradient(135deg, rgba(20,25,40,0.8), rgba(10,12,20,0.9));
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 16px;
+  padding: 20px 24px;
+  margin-bottom: 20px;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 8px 32px -8px rgba(0,0,0,0.4);
+}
+
+#screen-login-scan .status-panel .status-row,
+#screen-register-scan .status-panel .status-row,
+.biometric-auth-card .status-panel .status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+
+#screen-login-scan .status-panel .status-row:last-child,
+#screen-register-scan .status-panel .status-row:last-child,
+.biometric-auth-card .status-panel .status-row:last-child {
+  border-bottom: none;
+}
+
+#screen-login-scan .status-panel .status-label,
+#screen-register-scan .status-panel .status-label,
+.biometric-auth-card .status-panel .status-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+#screen-login-scan .status-panel .status-value,
+#screen-register-scan .status-panel .status-value,
+.biometric-auth-card .status-panel .status-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  font-weight: 500;
+  font-family: var(--font-sans);
+  color: var(--color-text);
+}
+
+#screen-login-scan .status-panel .status-value::before,
+#screen-register-scan .status-panel .status-value::before,
+.biometric-auth-card .status-panel .status-value::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-text-faint);
+  transition: all 0.3s;
+  flex-shrink: 0;
+}
+
+#screen-login-scan .status-panel .status-value.ready::before,
+#screen-login-scan .status-panel .status-value.detected::before,
+#screen-login-scan .status-panel .status-value.confirmed::before,
+#screen-login-scan .status-panel .status-value.verified::before,
+#screen-login-scan .status-panel .status-value.complete::before,
+#screen-login-scan .status-panel .status-value.matched::before,
+#screen-register-scan .status-panel .status-value.ready::before,
+#screen-register-scan .status-panel .status-value.detected::before,
+#screen-register-scan .status-panel .status-value.confirmed::before,
+#screen-register-scan .status-panel .status-value.verified::before,
+#screen-register-scan .status-panel .status-value.complete::before,
+#screen-register-scan .status-panel .status-value.matched::before,
+.biometric-auth-card .status-panel .status-value.ready::before,
+.biometric-auth-card .status-panel .status-value.detected::before,
+.biometric-auth-card .status-panel .status-value.confirmed::before,
+.biometric-auth-card .status-panel .status-value.verified::before,
+.biometric-auth-card .status-panel .status-value.complete::before,
+.biometric-auth-card .status-panel .status-value.matched::before {
+  background: var(--color-success);
+  box-shadow: 0 0 8px var(--color-success);
+  animation: status-pulse 2s ease-in-out infinite;
+}
+
+@keyframes status-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(1.1); }
+}
+
+#screen-login-scan .status-panel .status-value.active::before,
+#screen-register-scan .status-panel .status-value.active::before,
+.biometric-auth-card .status-panel .status-value.active::before {
+  background: var(--color-brand);
+  box-shadow: 0 0 8px var(--color-brand);
+  animation: status-spin 1.5s linear infinite;
+}
+
+@keyframes status-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+#screen-login-scan .status-panel .status-value.done::before,
+#screen-register-scan .status-panel .status-value.done::before,
+.biometric-auth-card .status-panel .status-value.done::before {
+  background: var(--color-success);
+  box-shadow: 0 0 8px var(--color-success);
+}
+
+/* Auth Header — Clean */
+#screen-login-scan .auth-header,
+#screen-register-scan .auth-header,
+.biometric-auth-card .auth-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  background: rgba(10,15,30,0.6);
+  backdrop-filter: blur(12px);
+}
+
+#screen-login-scan .auth-header-brand,
+#screen-register-scan .auth-header-brand,
+.biometric-auth-card .auth-header-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+#screen-login-scan .brand-icon,
+#screen-register-scan .brand-icon,
+.biometric-auth-card .brand-icon {
+  width: 40px;
+  height: 40px;
+  color: var(--color-brand);
+  filter: drop-shadow(0 0 12px rgba(37,99,235,0.4));
+}
+
+#screen-login-scan .brand-title,
+#screen-register-scan .brand-title,
+.biometric-auth-card .brand-title {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+}
+
+#screen-login-scan .brand-subtitle,
+#screen-register-scan .brand-subtitle,
+.biometric-auth-card .brand-subtitle {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--color-brand);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-family: var(--font-mono);
+}
+
+#screen-login-scan .auth-header-actions,
+#screen-register-scan .auth-header-actions,
+.biometric-auth-card .auth-header-actions {
+  display: flex;
+  gap: 8px;
+}
+
+#screen-login-scan .header-action-btn,
+#screen-register-scan .header-action-btn,
+.biometric-auth-card .header-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 10px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  white-space: nowrap;
+}
+
+#screen-login-scan .header-action-btn:hover:not(:disabled),
+#screen-register-scan .header-action-btn:hover:not(:disabled),
+.biometric-auth-card .header-action-btn:hover:not(:disabled) {
+  background: rgba(37,99,235,0.08);
+  color: var(--color-brand);
+  border-color: var(--color-brand);
+  transform: translateY(-1px);
+}
+
+#screen-login-scan .header-action-btn:focus-visible,
+#screen-register-scan .header-action-btn:focus-visible,
+.biometric-auth-card .header-action-btn:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+}
+
+#screen-login-scan .action-icon,
+#screen-register-scan .action-icon,
+.biometric-auth-card .action-icon { width: 18px; height: 18px; flex-shrink: 0; }
+#screen-login-scan .action-label,
+#screen-register-scan .action-label,
+.biometric-auth-card .action-label { display: none; font-size: 11px; font-weight: 600; }
+#screen-login-scan .action-state,
+#screen-register-scan .action-state,
+.biometric-auth-card .action-state { font-family: var(--font-mono); font-size: 10px; color: var(--color-success); font-weight: 700; }
+
+@media (min-width: 480px) {
+  #screen-login-scan .action-label,
+  #screen-register-scan .action-label,
+  .biometric-auth-card .action-label { display: inline; }
+}
+
+#screen-login-scan .header-action-btn-danger,
+#screen-register-scan .header-action-btn-danger,
+.biometric-auth-card .header-action-btn-danger {
+  border-color: rgba(220,38,38,0.2);
+  color: #f87171;
+}
+#screen-login-scan .header-action-btn-danger:hover:not(:disabled),
+#screen-register-scan .header-action-btn-danger:hover:not(:disabled),
+.biometric-auth-card .header-action-btn-danger:hover:not(:disabled) {
+  background: rgba(220,38,38,0.08);
+  border-color: var(--color-error);
+  color: #ef4444;
+}
+
+.auth-panel {
+  padding: 24px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.auth-panel-header {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.auth-panel-header h1 {
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.auth-subtitle {
+  font-size: 14px;
+  color: var(--color-text-muted);
+  margin-bottom: 12px;
+}
+
+.auth-description {
+  font-size: 13px;
+  color: var(--color-text-faint);
+  line-height: 1.6;
+  max-width: 400px;
+  margin: 0 auto;
+}
+
+/* Face Guide Corners — override for both screens */
+#screen-login-scan .face-guide-corners,
+#screen-register-scan .face-guide-corners,
+.biometric-auth-card .face-guide-corners {
+  position: absolute;
+  inset: 0;
+  border-radius: 50% / 45%;
+  pointer-events: none;
+}
+
+#screen-login-scan .corner,
+#screen-register-scan .corner,
+.biometric-auth-card .corner {
+  position: absolute;
+  width: 28px;
+  height: 28px;
+  border: 3px solid var(--color-brand);
+  border-radius: 6px;
+  opacity: 0.9;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  filter: drop-shadow(0 0 8px rgba(37,99,235,0.6));
+}
+
+#screen-login-scan .corner.tl,
+#screen-register-scan .corner.tl,
+.biometric-auth-card .corner.tl { top: -4px; left: -4px; border-right: none; border-bottom: none; border-top-left-radius: 12px; }
+#screen-login-scan .corner.tr,
+#screen-register-scan .corner.tr,
+.biometric-auth-card .corner.tr { top: -4px; right: -4px; border-left: none; border-bottom: none; border-top-right-radius: 12px; }
+#screen-login-scan .corner.bl,
+#screen-register-scan .corner.bl,
+.biometric-auth-card .corner.bl { bottom: -4px; left: -4px; border-right: none; border-top: none; border-bottom-left-radius: 12px; }
+#screen-login-scan .corner.br,
+#screen-register-scan .corner.br,
+.biometric-auth-card .corner.br { bottom: -4px; right: -4px; border-left: none; border-top: none; border-bottom-right-radius: 12px; }
+
+/* State variants for corners */
+#screen-login-scan .face-guide-frame.good .corner,
+#screen-login-scan .face-guide-frame.centered .corner,
+#screen-register-scan .face-guide-frame.good .corner,
+#screen-register-scan .face-guide-frame.centered .corner,
+.biometric-auth-card .face-guide-frame.good .corner,
+.biometric-auth-card .face-guide-frame.centered .corner {
+  border-color: var(--color-success);
+  filter: drop-shadow(0 0 10px rgba(5,150,105,0.8));
+  animation: corner-pulse 2s ease-in-out infinite;
+}
+
+@keyframes corner-pulse {
+  0%, 100% { opacity: 0.9; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.05); }
+}
+
+#screen-login-scan .face-guide-frame.too-far .corner,
+#screen-login-scan .face-guide-frame.too-close .corner,
+#screen-login-scan .face-guide-frame.off-center .corner,
+#screen-register-scan .face-guide-frame.too-far .corner,
+#screen-register-scan .face-guide-frame.too-close .corner,
+#screen-register-scan .face-guide-frame.off-center .corner,
+.biometric-auth-card .face-guide-frame.too-far .corner,
+.biometric-auth-card .face-guide-frame.too-close .corner,
+.biometric-auth-card .face-guide-frame.off-center .corner {
+  border-color: var(--color-warning);
+  filter: drop-shadow(0 0 8px rgba(217,119,6,0.7));
+  animation: corner-shake 0.5s ease-in-out infinite;
+}
+
+@keyframes corner-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-3px); }
+  75% { transform: translateX(3px); }
+}
+
+@keyframes corner-pulse {
+  0%, 100% { opacity: 0.9; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.05); }
+}
+
+/* Scan wrap — override for both screens */
+#screen-login-scan .scan-wrap,
+#screen-register-scan .scan-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 20px;
+  padding: 16px;
+}
+
+#screen-login-scan .biometric-auth-card,
+#screen-register-scan .biometric-auth-card {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-xl);
+  width: 100%;
+  max-width: 520px;
+  max-height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  #screen-login-scan *,
+  #screen-register-scan *,
+  .biometric-auth-card *,
+  #screen-login-scan *::before,
+  #screen-register-scan *::before,
+  .biometric-auth-card *::before,
+  #screen-login-scan *::after,
+  #screen-register-scan *::after,
+  .biometric-auth-card *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

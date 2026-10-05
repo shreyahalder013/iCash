@@ -209,6 +209,24 @@ const aiChatSchema = z.object({
   message: z.string().trim().min(1, 'Message is required.').max(2000),
 });
 
+const livenessChallengeSchema = z.object({
+  // Optional user ID hint to speed up lookup (server does not trust it for auth)
+  userIdHint: z.string().uuid().optional(),
+});
+
+const livenessVerifySchema = z
+  .object({
+    challengeId: z.string().uuid('Invalid challenge ID.'),
+    nonce: z.string().regex(/^[0-9a-f]{64}$/, 'Invalid nonce format.'),
+    blinks: z.number().int().min(1).max(2, 'Blink count must be 1 or 2.'),
+    durationMs: z.number().int().positive('Duration must be positive.'),
+    descriptor: z
+      .array(z.number().finite())
+      .min(128, 'Face descriptor must contain at least 128 numeric values.'),
+    mode: z.enum(['login', 'register']).default('login'),
+  })
+  .passthrough();
+
 module.exports = {
   registerSchema,
   loginAadhaarSchema,
@@ -234,4 +252,6 @@ module.exports = {
   userStatusUpdateSchema,
   securityEventSchema,
   aiChatSchema,
+  livenessChallengeSchema,
+  livenessVerifySchema,
 };

@@ -91,6 +91,38 @@ const biometricFrameLimiter = rateLimit({
   },
 });
 
+/**
+ * Liveness challenge issuance limiter.
+ * 10 challenges per 5-minute window per IP prevents challenge farming.
+ */
+const livenessChallengeLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000, // 5 minutes
+  max: process.env.NODE_ENV === 'test' ? 1000 : 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    ok: false,
+    error: 'TooManyRequests',
+    message: 'Liveness challenge limit reached. Please try again later.',
+  },
+});
+
+/**
+ * Liveness challenge verification limiter.
+ * 5 attempts per 15 minutes per IP.
+ */
+const livenessVerifyLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: process.env.NODE_ENV === 'test' ? 1000 : 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    ok: false,
+    error: 'TooManyRequests',
+    message: 'Liveness verification failed. Please try again later.',
+  },
+});
+
 module.exports = {
   authLimiter,
   transactionLimiter,
@@ -98,4 +130,6 @@ module.exports = {
   biometricChallengeLimiter,
   biometricVerifyLimiter,
   biometricFrameLimiter,
+  livenessChallengeLimiter,
+  livenessVerifyLimiter,
 };
