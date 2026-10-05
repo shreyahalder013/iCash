@@ -149,12 +149,17 @@ export class FaceLiveness {
   }
   
   async init() {
+    console.log('[FaceLiveness] Initializing...');
     this._injectStyles();
     this._buildStepsAndGrid();
     this._bindEvents();
+    console.log('[FaceLiveness] Loading model...');
     await this._loadModel();
+    console.log('[FaceLiveness] Model loaded, starting camera...');
     await this._startCamera();
+    console.log('[FaceLiveness] Camera started, fetching challenge...');
     await this._fetchChallenge();
+    console.log('[FaceLiveness] Starting main loop...');
     this._run();
   }
   
@@ -245,6 +250,7 @@ export class FaceLiveness {
   }
   
   async _startCamera() {
+    console.log('[FaceLiveness] Starting camera...');
     if (!window.isSecureContext) {
       throw new Error('Camera requires a secure HTTPS or localhost context.');
     }
@@ -259,13 +265,28 @@ export class FaceLiveness {
     
     let stream;
     try {
+      console.log('[FaceLiveness] Requesting camera with constraints:', constraints);
       stream = await navigator.mediaDevices.getUserMedia(constraints);
-    } catch {
-      stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      console.log('[FaceLiveness] Got stream:', stream);
+    } catch (e) {
+      console.warn('[FaceLiveness] First attempt failed, trying fallback:', e);
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        console.log('[FaceLiveness] Fallback stream:', stream);
+      } catch (e2) {
+        console.error('[FaceLiveness] Both attempts failed:', e2);
+        throw e2;
+      }
     }
     
+    console.log('[FaceLiveness] Setting stream on video element');
     this.video.srcObject = stream;
     this.stream = stream;
+    
+    // Ensure video element has required attributes
+    this.video.setAttribute('playsinline', 'true');
+    this.video.setAttribute('webkit-playsinline', 'true');
+    this.video.muted = true;
     
     await new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
@@ -273,18 +294,40 @@ export class FaceLiveness {
         reject(new Error('CAMERA_TIMEOUT'));
       }, 10000);
       
+      const onLoadedMetadata = () => {
+        console.log('[FaceLiveness] Video metadata loaded, dimensions:', this.video.videoWidth, 'x', this.video.videoHeight);
+      };
+      this.video.onloadedmetadata = onLoadedMetadata;
+      
       const onPlaying = () => {
+        console.log('[FaceLiveness] Video playing event fired');
         this.video.onplaying = null;
         clearTimeout(timeout);
         if (this.video.videoWidth > 0 && this.video.videoHeight > 0) {
+          console.log('[FaceLiveness] Video ready:', this.video.videoWidth, 'x', this.video.videoHeight);
           resolve();
         } else {
           reject(new Error('NO_VIDEO_DIMENSIONS'));
         }
       };
       this.video.onplaying = onPlaying;
-      this.video.play().catch(() => {});
+      this.video.onerror = (e) => {
+        console.error('[FaceLiveness] Video error:', e);
+        clearTimeout(timeout);
+        reject(new Error('VIDEO_ERROR'));
+      };
+      
+      console.log('[FaceLiveness] Calling video.play()');
+      const playPromise = this.video.play();
+      if (playPromise !== undefined) {
+        playPromise.catch((e) => {
+          console.error('[FaceLiveness] video.play() failed:', e);
+          clearTimeout(timeout);
+          reject(e);
+        });
+      }
     });
+    console.log('[FaceLiveness] Camera started successfully');
   }
   
   _stopCamera() {
@@ -335,10 +378,49 @@ export class FaceLiveness {
   }
   
   _run() {
+    console.log('[FaceLiveness] Starting run loop, runId:', this.runId + 1);
     const my = ++this.runId;
     this._resetState();
     this._say('Initializing...');
     this._loop(my);
+  }
+  
+  _loop(my) {
+    if (my !== this.runId) {
+      console.log('[FaceLiveness] Loop stopped, runId changed');
+      return;
+    }
+    if (!this.landmarker) {
+      console.warn('[FaceLiveness] No landmarker available');
+      return;
+    }
+    
+    const now = performance.now();
+    if (this.video.readyState >= 2 && this.video.currentTime !== this.S.lastTs) {
+      this.S.lastTs = this.video.currentTime;
+      const r = this.landmarker.detectForVideo(this.video, now);
+      const lm = r.faceLandmarks?.[0];
+      const bs = r.faceBlendshapes?.[0];
+      
+      if (!lm || !bs) {
+        this._setStat('face', '', 'Not detected');
+        this._setStat('eyes', '', 'Not detected');
+        if (this.faceGuide) this.faceGuide.classList.remove('good');
+        this.S.still = [];
+        this.S.noseHist = [];
+        if (this.S.phase > 0 && this.S.phase < 4) {
+          this.S.phase = 0;
+          this._setStep(0);
+          this.S.blinks = 0;
+          this._say('Face lost. Center your face in the guide');
+        }
+      } else {
+        this._step(lm, bs, now);
+      }
+    }
+    if (my === this.runId) {
+      requestAnimationFrame(() => this._loop(my));
+    }
   }
   
   _resetState() {

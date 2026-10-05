@@ -16,24 +16,27 @@ export async function initLoginLiveness(targetUser) {
   const video = document.getElementById('login-video');
   const overlayCanvas = document.getElementById('login-overlay-canvas');
   const faceGuide = document.getElementById('face-guide')?.querySelector('.face-guide-frame');
-  const msg = document.getElementById('login-banner-text') || document.getElementById('login-instruction-text');
-  const errBox = document.getElementById('login-cam-error') || document.getElementById('login-err');
-  const stepsContainer = document.getElementById('login-steps');
-  const gridContainer = document.getElementById('login-status-grid');
-  const retryBtn = document.getElementById('login-retry-btn') || document.getElementById('login-retry-cam-btn');
-  const cancelBtn = document.getElementById('login-cancel-btn');
-  const fallbackBtn = document.getElementById('login-fallback-btn');
-  const tabLogin = document.getElementById('login-tab-login');
-  const tabReg = document.getElementById('login-tab-reg');
+  const msg = document.getElementById('login-instruction-text');
+  const errBox = document.getElementById('login-cam-error');
+  const stepsContainer = document.getElementById('login-progress-steps');
+  const gridContainer = document.getElementById('login-status-panel');
+  const retryBtn = document.getElementById('login-retry-cam-btn');
+  // Cancel button doesn't exist in HTML - use null
+  const cancelBtn = null;
+  // Fallback button doesn't exist - use null
+  const fallbackBtn = null;
+  // Tabs don't exist in the login scan screen
+  const tabLogin = null;
+  const tabReg = null;
   
-  // Status elements
+  // Status elements - use actual IDs from HTML
   const statusEls = {
-    cam: document.getElementById('status-camera') || document.getElementById('login-status-camera'),
-    face: document.getElementById('status-face') || document.getElementById('login-status-face'),
-    eyes: document.getElementById('status-eyes') || document.getElementById('login-status-eyes'),
-    live: document.getElementById('status-liveness') || document.getElementById('login-status-liveness'),
-    blink: document.getElementById('status-blink') || document.getElementById('login-status-blink'),
-    id: document.getElementById('status-identity') || document.getElementById('login-status-identity'),
+    cam: document.getElementById('status-camera'),
+    face: document.getElementById('status-face'),
+    eyes: document.getElementById('status-eyes'),
+    live: document.getElementById('status-liveness'),
+    blink: document.getElementById('status-blink'),
+    id: document.getElementById('status-identity'),
   };
   
   if (!video) {
@@ -56,15 +59,15 @@ export async function initLoginLiveness(targetUser) {
       video,
       overlayCanvas,
       faceGuide,
-      msg,
-      errBox,
+      msg: document.getElementById('login-instruction-text'),
+      errBox: document.getElementById('login-cam-error'),
       stepsContainer,
       gridContainer,
-      retryBtn,
-      cancelBtn,
-      fallbackBtn,
-      tabLogin,
-      tabReg,
+      retryBtn: document.getElementById('login-retry-cam-btn'),
+      cancelBtn: null,
+      fallbackBtn: null,
+      tabLogin: null,
+      tabReg: null,
       statusEls,
     },
     onSuccess: (detail) => {
