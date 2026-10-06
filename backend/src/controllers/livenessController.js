@@ -321,7 +321,7 @@ class LivenessController {
           
           if (distance < bestDistance) {
             bestDistance = distance;
-            bestUserId = profile.userId;
+            bestUserId = profile.user_id; // Prisma returns snake_case
           }
         } catch (e) {
           console.log('[LivenessVerify] Decryption failed for profile', profile.user_id, ':', e.message);

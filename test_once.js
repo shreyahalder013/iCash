@@ -1,36 +1,31 @@
-// Full test: register new user -> liveness verify -> login
+// Test: liveness verify -> login biometric (single test, fresh token)
 const descriptors = [new Array(128).fill(0.1)];
 
-console.log('=== STEP 1: Register ===');
-fetch('http://localhost:4000/api/auth/register', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  credentials: 'include',
-  body: JSON.stringify({
-    fullName: 'Demo User',
-    phone: '9876543499',
-    aadhaarNumber: '123456789499',
-    pin: '1234',
-    descriptors: descriptors
-  })
-}).then(r => r.json()).then(data => {
-  console.log('Registration:', data.ok ? 'SUCCESS' : 'FAILED', data.message || '');
-  if (data.user) {
-    testLiveness(data.user.id);
-  }
-}).catch(console.error);
-
-async function testLiveness(userId) {
-  const descriptor = new Array(128).fill(0.1);
+async function testOnce() {
+  console.log('=== STEP 1: Register ===');
+  const reg = await fetch('http://localhost:4000/api/auth/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({
+      fullName: 'Demo User',
+      phone: '9876543599',
+      aadhaarNumber: '123456789599',
+      pin: '1234',
+      descriptors: descriptors
+    })
+  }).then(r => r.json());
   
-  console.log('\n=== STEP 2: Get Liveness Challenge ===');
+  console.log('Registration:', reg.ok ? 'SUCCESS' : 'FAILED', reg.message || '');
+  if (!reg.user) return;
+  
+  console.log('\n=== STEP 2: Liveness Challenge ===');
   const challenge = await fetch('http://localhost:4000/api/liveness/challenge', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ userIdHint: userId })
+    body: JSON.stringify({ userIdHint: reg.user.id })
   }).then(r => r.json());
-  
   console.log('Challenge:', challenge.ok ? 'OK' : 'FAILED');
   
   console.log('\n=== STEP 3: Liveness Verify ===');
@@ -41,17 +36,16 @@ async function testLiveness(userId) {
     body: JSON.stringify({
       challengeId: challenge.challengeId,
       nonce: challenge.nonce,
-      descriptor: descriptor,
+      descriptor: descriptors[0],
       blinks: challenge.requiredBlinks,
       durationMs: 5000,
       mode: 'login'
     })
   }).then(r => r.json());
-  
-  console.log('Verify result:', verify.ok ? 'SUCCESS' : 'FAILED', verify.error, verify.message || '');
+  console.log('Verify:', verify.ok ? 'SUCCESS' : 'FAILED', verify.error, verify.message || '');
   
   if (verify.ok && verify.biometricToken) {
-    console.log('\n=== STEP 4: Login with Biometric Token ===');
+    console.log('\n=== STEP 4: Login Biometric ===');
     const login = await fetch('http://localhost:4000/api/auth/login-biometric', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -59,5 +53,10 @@ async function testLiveness(userId) {
       body: JSON.stringify({ biometricToken: verify.biometricToken })
     }).then(r => r.json());
     console.log('Login:', login.ok ? 'SUCCESS' : 'FAILED', login.message || '');
+    if (login.ok) {
+      console.log('User:', login.user);
+    }
   }
 }
+
+testOnce().catch(console.error);
