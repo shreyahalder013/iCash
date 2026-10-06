@@ -101,8 +101,9 @@ export async function initLoginLiveness(targetUser) {
     return faceLivenessInstance;
   } catch (e) {
     console.error('[FaceLiveness] Init failed:', e);
-    const message =
-      e && e.message
+    const message = window.cameraErrorMessage
+      ? window.cameraErrorMessage(e)
+      : e && e.message
         ? e.message
         : 'The biometric service could not be reached. Tap Retry, or use the Aadhaar & PIN sign-in below.';
     if (errBox) {
@@ -221,8 +222,9 @@ export async function initRegisterLiveness() {
     return faceLivenessInstance;
   } catch (e) {
     console.error('[FaceLiveness] Register init failed:', e);
-    const message =
-      e && e.message
+    const message = window.cameraErrorMessage
+      ? window.cameraErrorMessage(e)
+      : e && e.message
         ? e.message
         : 'The biometric service could not be reached. Tap Retry, or use Aadhaar & PIN sign-in below.';
     if (errBox) {

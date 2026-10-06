@@ -10,6 +10,9 @@ function errorHandler(err, req, res, next) {
       name: err.name,
       code: err.code,
       status: err.status || err.statusCode,
+      stack: err.stack,
+      // Log the full error object for debugging
+      fullError: JSON.stringify(err, Object.getOwnPropertyNames(err), 2),
     });
   }
 

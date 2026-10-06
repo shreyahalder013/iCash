@@ -724,6 +724,8 @@ function cameraErrorMessage(err) {
   if (err && err.message === 'INSECURE_CONTEXT') {
     return 'Mobile browsers require HTTPS for camera streaming. Use PIN authorization or tap below to proceed with digital verification.';
   }
+
+  window.cameraErrorMessage = cameraErrorMessage;
   if (err && err.message === 'NO_MEDIA_API') {
     return "This browser doesn't support webcam access. Use PIN authorization to sign in.";
   }
@@ -737,13 +739,14 @@ function cameraErrorMessage(err) {
     return 'Camera started but no video frames received. Try a different camera or restart the browser.';
   }
   const name = err && err.name;
-  if (
-    name === 'NotAllowedError' ||
-    name === 'PermissionDeniedError' ||
-    name === 'SecurityError' ||
-    name === 'AbortError'
-  ) {
-    return 'Camera access blocked. On Android: close any floating bubbles/overlays (such as Messenger Chat Heads or screen recorders) and tap Retry, or use PIN authorization below.';
+  if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+    return 'Camera permission was denied. Allow camera access for iCash in browser settings, then tap Retry, or use Aadhaar & PIN sign-in below.';
+  }
+  if (name === 'SecurityError') {
+    return 'The browser blocked camera access because this page is not in an allowed secure context. Open iCash over HTTPS, then tap Retry.';
+  }
+  if (name === 'AbortError') {
+    return 'Camera startup was interrupted. Close other camera prompts or apps, then tap Retry.';
   }
   if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
     return 'No camera found. Connect a camera or use PIN authorization below.';
@@ -752,7 +755,7 @@ function cameraErrorMessage(err) {
     return 'Camera is in use by another app. Close other camera apps or use PIN authorization below.';
   }
   if (name === 'OverconstrainedError') {
-    return 'Camera resolution unsupported. Retrying with standard mobile camera settings.';
+    return 'This camera does not support the requested mode. Tap Retry to use compatible camera settings.';
   }
   if (err && err.message && err.message.includes('wasm')) {
     return 'Face model failed to load (WASM error). Ensure you are on HTTPS/localhost and try refreshing.';

@@ -30,6 +30,15 @@ const { registerRoutes } = require('./routes');
 const app = express();
 const PORT = Number(process.env.PORT) || 4000;
 const FRONTEND_DIR = path.join(__dirname, '..', '..', 'frontend');
+const FRONTEND_PUBLIC_DIR = path.join(FRONTEND_DIR, 'public');
+const MEDIAPIPE_PACKAGE_DIR = path.join(
+  __dirname,
+  '..',
+  '..',
+  'node_modules',
+  '@mediapipe',
+  'tasks-vision'
+);
 
 // Disable server fingerprinting
 app.disable('x-powered-by');
@@ -271,6 +280,11 @@ registerRoutes(app);
 // Any unmatched /api/* route is a genuine 404, not the SPA fallback.
 app.use('/api', notFoundHandler);
 
+// Serve bundled public assets (MediaPipe model/WASM files) before the SPA files.
+app.use(express.static(FRONTEND_PUBLIC_DIR));
+// Serve the pinned MediaPipe ESM bundle and WASM runtime from the installed
+// dependency so deployed clients do not depend on a third-party module URL.
+app.use('/mediapipe', express.static(MEDIAPIPE_PACKAGE_DIR));
 // Serve the static frontend (index.html, script.js, style.css, api.js).
 app.use(express.static(FRONTEND_DIR));
 

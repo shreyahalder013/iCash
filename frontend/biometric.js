@@ -63,8 +63,27 @@ function calculateSampleDiversity(samples) {
 // ── Camera Manager ────────────────────────────────────────────────────────────
 const CameraManager = {
   activeStreams: new WeakMap(),
+  activeStarts: new WeakMap(),
 
   async start(videoEl, errEl) {
+    const previousStart = this.activeStarts.get(videoEl);
+    if (previousStart) {
+      console.log('[CameraManager] Waiting for existing camera start');
+      return previousStart;
+    }
+
+    const startPromise = this._start(videoEl, errEl);
+    this.activeStarts.set(videoEl, startPromise);
+    try {
+      return await startPromise;
+    } finally {
+      if (this.activeStarts.get(videoEl) === startPromise) {
+        this.activeStarts.delete(videoEl);
+      }
+    }
+  },
+
+  async _start(videoEl, errEl) {
     if (errEl) {
       errEl.textContent = '';
       errEl.classList.remove('active');
@@ -97,15 +116,17 @@ const CameraManager = {
     }
 
     const constraints = {
-      video: {
-        width: { ideal: 640, min: 320, max: 1280 },
-        height: { ideal: 480, min: 240, max: 720 },
-        facingMode: 'user',
-        frameRate: { ideal: 30, max: 30 },
-      },
+      video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
       audio: false,
     };
 
+    console.log('[CameraManager] Secure context:', window.isSecureContext);
+    console.log('[CameraManager] Permission state:', await this.getPermissionState());
+    const devices = await navigator.mediaDevices.enumerateDevices().catch(() => []);
+    console.log(
+      '[CameraManager] Video devices found:',
+      devices.filter((device) => device.kind === 'videoinput').length
+    );
     console.log('[CameraManager] Requesting camera with constraints:', constraints);
     let stream;
     try {
@@ -124,12 +145,8 @@ const CameraManager = {
           )
         );
     } catch (e) {
-      console.warn(
-        '[CameraManager] Primary constraints failed:',
-        e.name,
-        e.message,
-        '- trying fallback'
-      );
+      console.warn('[CameraManager] Primary constraints failed:', e.name, e.message);
+      if (e.name !== 'OverconstrainedError') throw e;
       try {
         stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
         console.log(
@@ -148,95 +165,80 @@ const CameraManager = {
     console.log('[CameraManager] srcObject assigned to video element');
     this.activeStreams.set(videoEl, stream);
 
-    // Wait for video to be actually playing with valid dimensions
+    // Wait for metadata and playback without relying on events that may have
+    // fired before handlers were installed (common on Safari and fast devices).
     await new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        cleanup();
-        reject(new Error('CAMERA_TIMEOUT'));
-      }, 10000);
-
+      let settled = false;
       const cleanup = () => {
         clearTimeout(timeout);
-        videoEl.onloadedmetadata = null;
-        videoEl.oncanplay = null;
-        videoEl.onplaying = null;
-        videoEl.onerror = null;
+        videoEl.removeEventListener('loadedmetadata', onReady);
+        videoEl.removeEventListener('canplay', onReady);
+        videoEl.removeEventListener('playing', onReady);
+        videoEl.removeEventListener('error', onError);
       };
-
-      videoEl.onerror = () => {
-        console.error('[CameraManager] Video element error event');
-        cleanup();
-        reject(new Error('VIDEO_ERROR'));
-      };
-
-      // If metadata already loaded, check canplay/playing
-      if (videoEl.readyState >= 1) {
-        // HAVE_METADATA
-        videoEl.oncanplay = () => {
-          console.log('[CameraManager] canplay event');
-          // Wait for playing event to ensure frames are flowing
-          videoEl.onplaying = () => {
-            cleanup();
-            // Verify actual dimensions
-            if (videoEl.videoWidth > 0 && videoEl.videoHeight > 0) {
-              console.log(
-                '[CameraManager] Video playing:',
-                videoEl.videoWidth,
-                'x',
-                videoEl.videoHeight
-              );
-              resolve();
-            } else {
-              console.error('[CameraManager] playing but no dimensions');
-              reject(new Error('NO_VIDEO_DIMENSIONS'));
-            }
-          };
-        };
-      } else {
-        videoEl.onloadedmetadata = () => {
+      const finish = () => {
+        if (settled) return;
+        if (videoEl.videoWidth > 0 && videoEl.videoHeight > 0 && !videoEl.paused) {
+          settled = true;
+          cleanup();
           console.log(
-            '[CameraManager] loadedmetadata:',
+            '[CameraManager] Video playing:',
             videoEl.videoWidth,
             'x',
             videoEl.videoHeight
           );
-          videoEl.oncanplay = () => {
-            console.log('[CameraManager] canplay event');
-            videoEl.onplaying = () => {
-              cleanup();
-              if (videoEl.videoWidth > 0 && videoEl.videoHeight > 0) {
-                console.log(
-                  '[CameraManager] Video playing:',
-                  videoEl.videoWidth,
-                  'x',
-                  videoEl.videoHeight
-                );
-                resolve();
-              } else {
-                console.error('[CameraManager] playing but no dimensions');
-                reject(new Error('NO_VIDEO_DIMENSIONS'));
-              }
-            };
-          };
-        };
-      }
+          resolve();
+        }
+      };
+      const onReady = () => {
+        console.log(
+          '[CameraManager] Video event:',
+          videoEl.readyState,
+          videoEl.videoWidth,
+          'x',
+          videoEl.videoHeight
+        );
+        finish();
+      };
+      const onError = () => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(new Error('VIDEO_ERROR'));
+      };
+      const timeout = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(new Error('CAMERA_TIMEOUT'));
+      }, 10000);
 
-      // Start playback - don't await inside Promise executor
-      const playPromise = videoEl.play();
-      if (playPromise !== undefined) {
-        playPromise.catch((e) => {
-          console.warn(
-            '[CameraManager] play() rejected (may recover via onplaying):',
-            e.name,
-            e.message
-          );
-          // play() might reject if already playing or user interaction needed
-          // The onplaying handler will still fire
-        });
-      }
+      videoEl.addEventListener('loadedmetadata', onReady);
+      videoEl.addEventListener('canplay', onReady);
+      videoEl.addEventListener('playing', onReady);
+      videoEl.addEventListener('error', onError);
+      videoEl.play().then(onReady).catch((error) => {
+        if (settled) return;
+        console.error('[CameraManager] video.play() failed:', error.name, error.message);
+        settled = true;
+        cleanup();
+        reject(error);
+      });
+      onReady();
     });
 
+    console.log('[CameraManager] First playable camera frame is available');
     return stream;
+  },
+
+  async getPermissionState() {
+    try {
+      return navigator.permissions
+        ? (await navigator.permissions.query({ name: 'camera' })).state
+        : 'unsupported';
+    } catch (_) {
+      return 'unknown';
+    }
   },
 
   stop(videoEl) {
@@ -261,6 +263,12 @@ const CameraManager = {
     };
   },
 };
+
+// Shared helper used by legacy login, enrollment, and transaction flows and
+// by the FaceLiveness module.
+window.CameraManager = CameraManager;
+window.startCamera = (videoEl, errEl) => CameraManager.start(videoEl, errEl);
+window.stopCamera = (videoEl) => CameraManager.stop(videoEl);
 
 // ── Model Loader ──────────────────────────────────────────────────────────────
 window._bioModelsLoaded = false;
