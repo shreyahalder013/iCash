@@ -133,6 +133,13 @@ export class FaceLiveness {
     this.challenge = null;
     this.firstFrameLogged = false;
     this.detectionErrorLogged = false;
+    this.isInitializing = false;
+    this.isRunning = false;
+    this.frameRequestId = null;
+    this.videoFrameRequestId = null;
+    this.initPromise = null;
+    this._lastTs = 0;
+    this._lastVideoTime = -1;
     
     // State machine
     this.S = {
@@ -151,19 +158,36 @@ export class FaceLiveness {
   }
   
   async init() {
+    if (this.isInitializing && this.initPromise) return this.initPromise;
+    if (this.isRunning) return this;
+
+    this.isInitializing = true;
+    this.initPromise = this._init();
+    try {
+      return await this.initPromise;
+    } finally {
+      this.isInitializing = false;
+      this.initPromise = null;
+    }
+  }
+
+  async _init() {
+    this.firstFrameLogged = false;
+    this.detectionErrorLogged = false;
     console.log('[FaceLiveness] Initializing...');
     this._injectStyles();
     this._buildStepsAndGrid();
     this._bindEvents();
-    console.log('[FaceLiveness] Loading model...');
-    await this._loadModel();
-    console.log('[FaceLiveness] Model loaded, starting camera...');
+    console.log('[FaceLiveness] Starting camera before model initialization...');
     await this._startCamera();
     this._say('Camera ready. Position your face in the guide.');
+    console.log('[FaceLiveness] Loading model after camera is ready...');
+    await this._loadModel();
     console.log('[FaceLiveness] Camera started, fetching challenge...');
     await this._fetchChallenge();
     console.log('[FaceLiveness] Starting main loop...');
     this._run();
+    return this;
   }
   
   _injectStyles() {
@@ -215,8 +239,7 @@ export class FaceLiveness {
   }
   
   _retry() {
-    this._stop();
-    this._run();
+    this.init().catch((error) => this._handleInitFailure(error));
   }
   
   _cancel() {
@@ -276,6 +299,21 @@ export class FaceLiveness {
   async _startCamera() {
     if (!window.startCamera) throw new Error('Camera helper is unavailable. Refresh and try again.');
     this.stream = await window.startCamera(this.video, this.errBox);
+    const videoTracks = this.stream
+      .getTracks()
+      .filter((track) => track.kind === 'video');
+    if (!videoTracks.length || videoTracks.some((track) => track.readyState !== 'live')) {
+      this._stopCamera();
+      throw new Error('CAMERA_UNAVAILABLE');
+    }
+    this._lastVideoTime = -1;
+    videoTracks.forEach((track) => {
+      track.addEventListener(
+        'ended',
+        () => this._handleRuntimeFailure('Camera stopped. Check the camera connection and tap Retry Camera.'),
+        { once: true }
+      );
+    });
     this._setStat('cam', 'ok', 'Ready');
     console.log('[FaceLiveness] Shared camera started successfully');
   }
@@ -318,7 +356,8 @@ export class FaceLiveness {
     const my = ++this.runId;
     this._resetState();
     this._say('Position your face in the guide.');
-    this._loop(my);
+    this.isRunning = true;
+    this._scheduleFrame(my);
   }
   
   _resetState() {
@@ -380,31 +419,77 @@ export class FaceLiveness {
   
   _stop() {
     this.runId++;
+    this.isRunning = false;
+    if (this.frameRequestId !== null) {
+      cancelAnimationFrame(this.frameRequestId);
+      this.frameRequestId = null;
+    }
+    if (this.videoFrameRequestId !== null && this.video.cancelVideoFrameCallback) {
+      this.video.cancelVideoFrameCallback(this.videoFrameRequestId);
+      this.videoFrameRequestId = null;
+    }
     this._stopCamera();
+    if (this.landmarker && typeof this.landmarker.close === 'function') {
+      try {
+        this.landmarker.close();
+      } catch (error) {
+        console.warn('[FaceLiveness] Landmarker close warning:', error);
+      }
+    }
+    this.landmarker = null;
   }
-  
+
+  _scheduleFrame(my) {
+    if (my !== this.runId || !this.isRunning) return;
+    if (typeof this.video.requestVideoFrameCallback === 'function') {
+      this.videoFrameRequestId = this.video.requestVideoFrameCallback(() => {
+        this.videoFrameRequestId = null;
+        this._loop(my);
+      });
+    } else {
+      this.frameRequestId = requestAnimationFrame(() => {
+        this.frameRequestId = null;
+        this._loop(my);
+      });
+    }
+  }
+
   _loop(my) {
     if (my !== this.runId) return;
     if (!this.landmarker) return;
     
     const now = performance.now();
-    // MediaStream video currentTime is not reliable on every Safari/WebView.
-    // Throttle by wall-clock time instead of waiting for currentTime to change.
-    if (this.video.readyState >= 2 && now - (this.S.lastDetectionAt || 0) >= 80) {
-      this.S.lastDetectionAt = now;
+    const video = this.video;
+    const videoReady =
+      video &&
+      video.readyState >= 2 &&
+      video.videoWidth > 0 &&
+      video.videoHeight > 0 &&
+      !video.paused &&
+      !video.ended;
+    if (!videoReady) {
+      this._scheduleFrame(my);
+      return;
+    }
+    if (
+      !Number.isFinite(video.currentTime) ||
+      video.currentTime === this._lastVideoTime ||
+      now <= this._lastTs
+    ) {
+      this._scheduleFrame(my);
+      return;
+    }
+    this._lastVideoTime = video.currentTime;
+    this._lastTs = now;
+    {
       let r;
       try {
         r = this.landmarker.detectForVideo(this.video, now);
       } catch (error) {
         if (!this.detectionErrorLogged) {
-          this.detectionErrorLogged = true;
           console.error('[FaceLiveness] First-frame detection failed:', error);
         }
-        if (this.errBox) {
-          this.errBox.textContent = 'Face detection failed. Tap Retry Camera.';
-          this.errBox.classList.add('active');
-        }
-        this._stop();
+        this._handleRuntimeFailure('Face detection failed. Tap Retry Camera.');
         return;
       }
       const lm = r.faceLandmarks?.[0];
@@ -430,9 +515,36 @@ export class FaceLiveness {
         this._step(lm, bs, now);
       }
     }
-    if (my === this.runId) {
-      requestAnimationFrame(() => this._loop(my));
+    this._scheduleFrame(my);
+  }
+
+  _handleInitFailure(error) {
+    console.error('[FaceLiveness] Initialization failed:', error);
+    this._setStat('cam', 'bad', 'Error');
+    const message =
+      error && error.message === 'CAMERA_UNAVAILABLE'
+        ? 'Camera unavailable. Check the camera connection and tap Retry Camera.'
+        : error && error.message
+          ? error.message
+          : 'Camera could not be started. Tap Retry Camera.';
+    if (this.errBox) {
+      this.errBox.textContent = message;
+      this.errBox.classList.add('active');
     }
+    this._stop();
+    if (this.retryBtn) this.retryBtn.style.display = '';
+  }
+
+  _handleRuntimeFailure(message) {
+    if (this.detectionErrorLogged) return;
+    this.detectionErrorLogged = true;
+    if (this.errBox) {
+      this.errBox.textContent = message;
+      this.errBox.classList.add('active');
+    }
+    this._setStat('cam', 'bad', 'Error');
+    this._stop();
+    if (this.retryBtn) this.retryBtn.style.display = '';
   }
   
   _step(lm, bs, now) {
@@ -568,6 +680,7 @@ export class FaceLiveness {
   
   destroy() {
     this._stop();
+    this.isInitializing = false;
   }
 }
 

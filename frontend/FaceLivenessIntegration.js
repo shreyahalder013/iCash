@@ -10,6 +10,10 @@ let faceLivenessInstance = null;
 
 // Initialize FaceLiveness for login screen
 export async function initLoginLiveness(targetUser) {
+  if (faceLivenessInstance && (faceLivenessInstance.isRunning || faceLivenessInstance.isInitializing)) {
+    console.log('[FaceLiveness] Login initialization already active; reusing instance');
+    return faceLivenessInstance;
+  }
   if (faceLivenessInstance) {
     faceLivenessInstance.destroy();
   }
@@ -119,6 +123,10 @@ export async function initLoginLiveness(targetUser) {
 
 // Initialize FaceLiveness for register screen
 export async function initRegisterLiveness() {
+  if (faceLivenessInstance && (faceLivenessInstance.isRunning || faceLivenessInstance.isInitializing)) {
+    console.log('[FaceLiveness] Registration initialization already active; reusing instance');
+    return faceLivenessInstance;
+  }
   if (faceLivenessInstance) {
     faceLivenessInstance.destroy();
   }
@@ -251,4 +259,5 @@ if (typeof window !== 'undefined') {
   window.initLoginLiveness = initLoginLiveness;
   window.initRegisterLiveness = initRegisterLiveness;
   window.teardownFaceLiveness = teardownFaceLiveness;
+  window.addEventListener('pagehide', teardownFaceLiveness, { once: true });
 }
