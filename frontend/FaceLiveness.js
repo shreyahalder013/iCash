@@ -84,6 +84,14 @@ function score(bs, name) {
   return cat ? cat.score : 0;
 }
 
+function inOval(lm) {
+  const xs = lm.map(p => p.x), ys = lm.map(p => p.y);
+  const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+  const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+  const w = Math.max(...xs) - Math.min(...xs);
+  return cx > 0.25 && cx < 0.75 && cy > 0.25 && cy < 0.75 && w > 0.15 && w < 0.85;
+}
+
 // 468-point MediaPipe landmark indices for iris/eye regions
 const IRIS_IDX = [468, 469, 470, 471, 472, 473, 474, 475, 476, 477]; // MediaPipe iris landmarks
 
@@ -267,7 +275,7 @@ export class FaceLiveness {
     if (this.tabLogin) this.tabLogin.setAttribute('aria-pressed', mode === 'login');
     if (this.tabReg) this.tabReg.setAttribute('aria-pressed', mode === 'register');
     this._stop();
-    this._run();
+    this.init().catch(e => this._handleInitFailure(e));
   }
   
   _retry() {
@@ -466,6 +474,7 @@ export class FaceLiveness {
     };
     this._embeddings = [];
     this._bestEmbedding = null;
+    this._stepBusy = false;
     this._setStep(0);
     if (this.faceGuide) this.faceGuide.classList.remove('good');
     this._resetStats();
@@ -510,6 +519,7 @@ export class FaceLiveness {
   }
   
   _stop() {
+    console.trace('[FaceLiveness] _stop called by:');
     this.runId++;
     this.isRunning = false;
     if (this.frameRequestId !== null) {
@@ -555,7 +565,12 @@ export class FaceLiveness {
 
   _loop(my) {
     if (my !== this.runId) return;
-    if (!this.landmarker) return;
+    if (!this.landmarker) {
+      console.warn('[FaceLiveness] landmarker null, loop dead');
+      return;
+    }
+    this._frames = (this._frames || 0) + 1;
+    if (this._frames % 60 === 1) console.log('[FaceLiveness] frame', this._frames);
     
     const now = performance.now();
     const video = this.video;
@@ -669,6 +684,14 @@ export class FaceLiveness {
   }
   
   async _step(lm, bs, now) {
+    if (this._stepBusy) return;
+    this._stepBusy = true;
+    try { await this._stepInner(lm, bs, now); }
+    catch (e) { console.error('[FaceLiveness] _step crashed:', e); }
+    finally { this._stepBusy = false; }
+  }
+
+  async _stepInner(lm, bs, now) {
     const centered = inOval(lm);
     if (this.faceGuide) this.faceGuide.classList.toggle('good', centered);
     this._setStat('face', centered ? 'ok' : 'bad', centered ? 'Detected' : 'Adjust position');

@@ -296,8 +296,13 @@ class LivenessController {
         },
       });
 
+      console.log('[LivenessVerify] Found', profiles.length, 'faceTemplate records');
+      
       for (const profile of profiles) {
-        if (!profile.encrypted_descriptor || !profile.iv || !profile.auth_tag) continue;
+        if (!profile.encrypted_descriptor || !profile.iv || !profile.auth_tag) {
+          console.log('[LivenessVerify] Skipping profile', profile.user_id, '- missing data');
+          continue;
+        }
         
         try {
           const storedDescriptor = faceTemplateService.decrypt(
@@ -306,16 +311,20 @@ class LivenessController {
             profile.auth_tag
           );
           
-          if (!storedDescriptor || storedDescriptor.length < 128) continue;
+          if (!storedDescriptor || storedDescriptor.length < 128) {
+            console.log('[LivenessVerify] Skipping profile', profile.user_id, '- invalid descriptor');
+            continue;
+          }
           
           const distance = faceTemplateService.distance(storedDescriptor, descriptor);
+          console.log('[LivenessVerify] Profile', profile.user_id, 'distance:', distance);
           
           if (distance < bestDistance) {
             bestDistance = distance;
             bestUserId = profile.userId;
           }
         } catch (e) {
-          // Decryption failed - skip this profile
+          console.log('[LivenessVerify] Decryption failed for profile', profile.user_id, ':', e.message);
           continue;
         }
       }
