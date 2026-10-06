@@ -925,7 +925,7 @@ async function legacyBeginLoginScan() {
   let challenge;
   try {
     setBannerStatus('login', 'Connecting to biometric server…', 'info', false);
-    const challengeRes = await window.iCashApi.issueChallenge({
+    const challengeRes = await window.iCashApi.livenessChallenge({
       userIdHint: targetUser ? targetUser.id : undefined,
     });
     if (!challengeRes || !challengeRes.ok || !challengeRes.challengeId) {
@@ -1591,10 +1591,10 @@ async function launchBiometricGate(title, lead) {
     return;
   }
 
-  // Issue server challenge
+  // Issue server challenge (new liveness endpoint)
   let challenge;
   try {
-    challenge = await window.iCashApi.issueChallenge({
+    challenge = await window.iCashApi.livenessChallenge({
       userIdHint: currentUser ? currentUser.id : undefined,
     });
     if (!challenge || !challenge.ok) throw new Error('Challenge creation failed');
@@ -1798,11 +1798,11 @@ async function legacyBeginRegisterScan() {
     return;
   }
 
-  // Request fresh cryptographic challenge from server
+  // Request fresh cryptographic challenge from server (new liveness endpoint)
   let challenge;
   try {
     setBannerStatus('reg', 'Connecting to biometric server…', 'info', false);
-    const challengeRes = await window.iCashApi.issueChallenge({});
+    const challengeRes = await window.iCashApi.livenessChallenge({});
     if (!challengeRes || !challengeRes.ok || !challengeRes.challengeId) {
       throw new Error((challengeRes && challengeRes.message) || 'Challenge generation failed');
     }

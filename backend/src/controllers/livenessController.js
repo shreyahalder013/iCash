@@ -72,22 +72,22 @@ class LivenessController {
     try {
       // Background cleanup of expired challenges
       prisma.livenessNonce
-        .deleteMany({ where: { expiresAt: { lt: new Date() } } })
+        .deleteMany({ where: { expires_at: { lt: new Date() } } })
         .catch(() => {});
 
       // Cryptographically random 32-byte hex nonce
       const nonce = crypto.randomBytes(32).toString('hex');
       // Randomized blink count: 1 or 2
-      const requiredBlinks = 1 + Math.floor(Math.random() * 2);
-      const expiresAt = new Date(Date.now() + CHALLENGE_TTL_MS);
-      const ipAddress = req.ip || req.headers['x-forwarded-for'] || null;
+      const required_blinks = 1 + Math.floor(Math.random() * 2);
+      const expires_at = new Date(Date.now() + CHALLENGE_TTL_MS);
+      const ip_address = req.ip || req.headers['x-forwarded-for'] || null;
 
       const challenge = await prisma.livenessNonce.create({
         data: {
           nonce,
-          requiredBlinks,
-          ipAddress: ipAddress ? String(ipAddress).slice(0, 45) : null,
-          expiresAt,
+          required_blinks,
+          ip_address: ip_address ? String(ip_address).slice(0, 45) : null,
+          expires_at,
         },
       });
       cacheChallenge(challenge);
@@ -96,13 +96,13 @@ class LivenessController {
         userId: null,
         eventType: 'LIVENESS_CHALLENGE_CREATED',
         severity: 'LOW',
-        description: `Liveness challenge issued: ${requiredBlinks} blink(s) (id=${challenge.id})`,
-        ipAddress,
+        description: `Liveness challenge issued: ${required_blinks} blink(s) (id=${challenge.id})`,
+        ipAddress: ip_address,
         deviceReference: req.headers['user-agent'],
       });
 
       // Instruction based on blink count
-      const instruction = requiredBlinks === 1
+      const instruction = required_blinks === 1
         ? 'Blink once naturally.'
         : 'Blink twice naturally with a brief pause.';
 
@@ -110,9 +110,9 @@ class LivenessController {
         ok: true,
         challengeId: challenge.id,
         nonce: challenge.nonce,
-        requiredBlinks: challenge.requiredBlinks,
+        requiredBlinks: challenge.required_blinks,
         instruction,
-        expiresAt: challenge.expiresAt.toISOString(),
+        expiresAt: challenge.expires_at.toISOString(),
       });
     } catch (err) {
       next(err);
@@ -124,8 +124,12 @@ class LivenessController {
    * Validates challenge nonce, single-use, temporal liveness evidence, and face identity match.
    */
   static async verifyChallenge(req, res, next) {
-    const ipAddress = req.ip || req.headers['x-forwarded-for'] || null;
-    const ua = req.headers['user-agent'];
+    const ipAddress = req.ip || req.headers['x-forwarded-for'] || 'unknown';
+    const ua = req.headers['user-agent'] || 'unknown';
+
+    // Defensive: ensure ipAddress is always defined
+    const safeIpAddress = ipAddress || 'unknown';
+    const safeUa = ua || 'unknown';
 
     try {
       const { challengeId, nonce, blinks, durationMs, descriptor, mode } = req.body;
@@ -174,8 +178,8 @@ class LivenessController {
           eventType: 'LIVENESS_AUTH_FAILURE',
           severity: 'MEDIUM',
           description: `Unknown challenge ID: ${challengeId}`,
-          ipAddress,
-          deviceReference: ua,
+          ipAddress: safeIpAddress,
+          deviceReference: safeUa,
         });
         return res.status(400).json({
           ok: false,
@@ -185,14 +189,14 @@ class LivenessController {
       }
 
       // Gate 2: Expiry verification (strict 30s TTL)
-      if (challenge.expiresAt < new Date()) {
+      if (challenge.expires_at < new Date()) {
         await SecurityService.recordEvent({
           userId: null,
           eventType: 'LIVENESS_AUTH_FAILURE',
           severity: 'LOW',
           description: `Expired challenge attempted: ${challengeId}`,
-          ipAddress,
-          deviceReference: ua,
+          ipAddress: safeIpAddress,
+          deviceReference: safeUa,
         });
         return res.status(400).json({
           ok: false,
@@ -202,14 +206,14 @@ class LivenessController {
       }
 
       // Gate 3: Anti-Replay (single-use validation)
-      if (challenge.consumedAt) {
+      if (challenge.consumed_at) {
         await SecurityService.recordEvent({
           userId: null,
           eventType: 'LIVENESS_CHALLENGE_REPLAYED',
           severity: 'HIGH',
           description: `Replay attack detected on used challenge ${challengeId}`,
-          ipAddress,
-          deviceReference: ua,
+          ipAddress: safeIpAddress,
+          deviceReference: safeUa,
         });
         return res.status(400).json({
           ok: false,
@@ -235,8 +239,8 @@ class LivenessController {
           eventType: 'LIVENESS_AUTH_FAILURE',
           severity: 'HIGH',
           description: `Nonce mismatch for challenge ${challengeId}`,
-          ipAddress,
-          deviceReference: ua,
+          ipAddress: safeIpAddress,
+          deviceReference: safeUa,
         });
         return res.status(400).json({
           ok: false,
@@ -246,14 +250,14 @@ class LivenessController {
       }
 
       // Gate 5: Blink count must match required
-      if (blinks !== challenge.requiredBlinks) {
+      if (blinks !== challenge.required_blinks) {
         await SecurityService.recordEvent({
           userId: null,
           eventType: 'LIVENESS_AUTH_FAILURE',
           severity: 'MEDIUM',
-          description: `Blink count mismatch: got ${blinks}, required ${challenge.requiredBlinks} (challenge=${challengeId})`,
-          ipAddress,
-          deviceReference: ua,
+          description: `Blink count mismatch: got ${blinks}, required ${challenge.required_blinks} (challenge=${challengeId})`,
+          ipAddress: safeIpAddress,
+          deviceReference: safeUa,
         });
         return res.status(403).json({
           ok: false,
@@ -265,7 +269,7 @@ class LivenessController {
       // Immediately consume the challenge in DB to prevent concurrent replay
       await prisma.livenessNonce.update({
         where: { id: challengeId },
-        data: { consumedAt: new Date() },
+        data: { consumed_at: new Date() },
       });
       invalidateChallenge(challengeId);
 
@@ -285,21 +289,21 @@ class LivenessController {
         where: { status: 'ACTIVE' },
         select: {
           id: true,
-          userId: true,
-          encryptedDescriptor: true,
+          user_id: true,
+          encrypted_descriptor: true,
           iv: true,
-          authTag: true,
+          auth_tag: true,
         },
       });
 
       for (const profile of profiles) {
-        if (!profile.encryptedDescriptor || !profile.iv || !profile.authTag) continue;
+        if (!profile.encrypted_descriptor || !profile.iv || !profile.auth_tag) continue;
         
         try {
           const storedDescriptor = faceTemplateService.decrypt(
-            profile.encryptedDescriptor,
+            profile.encrypted_descriptor,
             profile.iv,
-            profile.authTag
+            profile.auth_tag
           );
           
           if (!storedDescriptor || storedDescriptor.length < 128) continue;
@@ -325,8 +329,8 @@ class LivenessController {
           eventType: 'FACE_MATCH_FAILED',
           severity: 'MEDIUM',
           description: `Face identity match failed (challenge=${challengeId}, distance=${Number.isFinite(bestDistance) ? bestDistance.toFixed(4) : 'n/a'}, threshold=${matchMax})`,
-          ipAddress,
-          deviceReference: ua,
+          ipAddress: safeIpAddress,
+          deviceReference: safeUa,
         });
         
         // Generic message - never reveal which threshold failed
@@ -367,7 +371,7 @@ class LivenessController {
       // Update challenge record with authenticated user
       await prisma.livenessNonce.update({
         where: { id: challengeId },
-        data: { userId: bestUserId },
+        data: { user_id: bestUserId },
       });
 
       // Issue single-use signed biometricToken
@@ -390,8 +394,8 @@ class LivenessController {
         eventType: 'LIVENESS_TOKEN_ISSUED',
         severity: 'LOW',
         description: `Liveness challenge authenticated (id=${challengeId}, distance=${bestDistance.toFixed(4)}, blinks=${blinks})`,
-        ipAddress,
-        deviceReference: ua,
+        ipAddress: safeIpAddress,
+        deviceReference: safeUa,
       });
 
       return res.json({

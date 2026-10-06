@@ -281,6 +281,13 @@ const api = {
   issueChallenge: (data = {}) =>
     request('/api/biometric/challenge', { method: 'POST', body: data }),
 
+  // New liveness endpoints (MediaPipe-based, client-side liveness)
+  livenessChallenge: (data = {}) =>
+    request('/api/liveness/challenge', { method: 'POST', body: data }),
+
+  livenessVerify: (data) =>
+    request('/api/liveness/verify', { method: 'POST', body: data }),
+
   sendBiometricFrame: (data) => request('/api/biometric/frame', { method: 'POST', body: data }),
 
   verifyChallenge: (data) =>

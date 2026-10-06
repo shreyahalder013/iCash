@@ -29,8 +29,9 @@
  */
 
 const CFG = {
-  wasm: '/mediapipe',
-  model: '/mediapipe/face_landmarker.task',
+  wasm: 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm',
+  model:
+    'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
   closed: 0.55,
   open: 0.30,
   minBlinkMs: 40,
@@ -230,8 +231,25 @@ export class FaceLiveness {
   
   async _loadModel() {
     if (this.landmarker) return this.landmarker;
-    
-    const { FaceLandmarker, FilesetResolver } = await import('/mediapipe/vision_bundle.mjs');
+
+    let vision;
+    try {
+      vision = await import('/mediapipe/vision_bundle.mjs');
+    } catch (localError) {
+      try {
+        vision = await import(
+          'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs'
+        );
+      } catch (remoteError) {
+        const error = new Error(
+          'The face verification engine could not be loaded. Check your internet connection and tap Retry.'
+        );
+        error.cause = remoteError;
+        throw error;
+      }
+    }
+
+    const { FaceLandmarker, FilesetResolver } = vision;
     const fs = await FilesetResolver.forVisionTasks(CFG.wasm);
     
     const make = delegate => FaceLandmarker.createFromOptions(fs, {
@@ -340,30 +358,19 @@ export class FaceLiveness {
   
   async _fetchChallenge() {
     if (this.mode === 'login') {
-      try {
-        const res = await fetch('/api/liveness/challenge', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ userIdHint: this.targetUser?.id })
-        });
-        const data = await res.json();
-        if (!data.ok) throw new Error(data.message || 'Challenge failed');
-        this.challenge = data;
-        this.S.need = data.requiredBlinks || (1 + Math.floor(Math.random() * 2));
-        this._say(data.instruction || 'Center your face in the guide');
-      } catch (e) {
-        console.warn('Challenge fetch failed, using local challenge:', e);
-        this.challenge = {
-          challengeId: 'local-' + crypto.randomUUID(),
-          nonce: crypto.randomUUID(),
-          challengeType: 'BLINK_TWICE',
-          requiredBlinks: 1 + Math.floor(Math.random() * 2),
-          expiresAt: new Date(Date.now() + 30000).toISOString()
-        };
-        this.S.need = this.challenge.requiredBlinks;
-        this._say('Center your face in the guide');
+      const res = await fetch('/api/liveness/challenge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ userIdHint: this.targetUser?.id })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) {
+        throw new Error(data.message || 'The biometric service could not be reached.');
       }
+      this.challenge = data;
+      this.S.need = data.requiredBlinks;
+      this._say(data.instruction || 'Center your face in the guide');
     } else {
       this.challenge = {
         challengeId: 'local-' + crypto.randomUUID(),

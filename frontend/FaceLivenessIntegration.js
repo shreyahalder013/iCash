@@ -101,6 +101,17 @@ export async function initLoginLiveness(targetUser) {
     return faceLivenessInstance;
   } catch (e) {
     console.error('[FaceLiveness] Init failed:', e);
+    const message =
+      e && e.message
+        ? e.message
+        : 'The biometric service could not be reached. Tap Retry, or use the Aadhaar & PIN sign-in below.';
+    if (errBox) {
+      errBox.textContent = message;
+      errBox.classList.add('active');
+    }
+    if (retryBtn) retryBtn.style.display = '';
+    faceLivenessInstance.destroy();
+    faceLivenessInstance = null;
     return null;
   }
 }
@@ -210,6 +221,17 @@ export async function initRegisterLiveness() {
     return faceLivenessInstance;
   } catch (e) {
     console.error('[FaceLiveness] Register init failed:', e);
+    const message =
+      e && e.message
+        ? e.message
+        : 'The biometric service could not be reached. Tap Retry, or use Aadhaar & PIN sign-in below.';
+    if (errBox) {
+      errBox.textContent = message;
+      errBox.classList.add('active');
+    }
+    if (retryBtn) retryBtn.style.display = '';
+    faceLivenessInstance.destroy();
+    faceLivenessInstance = null;
     return null;
   }
 }
