@@ -16,6 +16,11 @@ services:
         value: twilio
       - key: BIOMETRIC_PROVIDER
         value: demo
+      # The Node API proxies biometric challenges and frames to the hosted
+      # Python liveness service. Without this, production falls back to the
+      # web service's own localhost:5001 and every biometric challenge fails.
+      - key: ICASH_LIVENESS_URL
+        value: https://icash-liveness.onrender.com
       - key: AUTO_SYNC_DB
         value: "true"
       - key: DATABASE_URL
