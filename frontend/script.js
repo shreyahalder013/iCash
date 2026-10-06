@@ -763,69 +763,10 @@ function cameraErrorMessage(err) {
   return 'Camera permission unavailable. Close floating screen bubbles/overlays or use PIN authorization below.';
 }
 
-async function startCamera(videoEl, errEl) {
-  if (errEl) {
-    errEl.textContent = '';
-    errEl.classList.remove('active');
-  }
-
-  // Set mobile video attributes
-  if (videoEl) {
-    videoEl.setAttribute('playsinline', 'true');
-    videoEl.setAttribute('webkit-playsinline', 'true');
-    videoEl.setAttribute('muted', 'true');
-    videoEl.muted = true;
-  }
-
-  if (!window.isSecureContext) {
-    const err = new Error('INSECURE_CONTEXT');
-    if (errEl) {
-      errEl.textContent = cameraErrorMessage(err);
-      errEl.classList.add('active');
-    }
-    throw err;
-  }
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    const err = new Error('NO_MEDIA_API');
-    if (errEl) {
-      errEl.textContent = cameraErrorMessage(err);
-      errEl.classList.add('active');
-    }
-    throw err;
-  }
-
-  try {
-    let stream;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user' },
-        audio: false,
-      });
-    } catch (conErr) {
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: false,
-      });
-    }
-    videoEl.srcObject = stream;
-    await videoEl.play().catch(() => {});
-    return stream;
-  } catch (err) {
-    console.error('Camera access failed:', err.name, err.message);
-    if (errEl) {
-      errEl.textContent = cameraErrorMessage(err);
-      errEl.classList.add('active');
-    }
-    throw err;
-  }
-}
-
-function stopCamera(videoEl) {
-  if (videoEl && videoEl.srcObject) {
-    videoEl.srcObject.getTracks().forEach((track) => track.stop());
-    videoEl.srcObject = null;
-  }
-}
+// startCamera / stopCamera are provided by CameraManager in biometric.js
+// (window.startCamera / window.stopCamera). Do NOT redefine them here: a global
+// function declaration in this file would override those and bypass the
+// retry + de-dupe logic.
 
 // beginRegisterScan / captureRegisterFace / cancelRegisterScan / teardownRegisterScan
 // → Implemented in biometric.js (real face-api.js auto-scan engine)

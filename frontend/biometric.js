@@ -146,7 +146,11 @@ const CameraManager = {
         );
     } catch (e) {
       console.warn('[CameraManager] Primary constraints failed:', e.name, e.message);
-      if (e.name !== 'OverconstrainedError') throw e;
+      if (e.name !== 'OverconstrainedError' && e.name !== 'NotReadableError' && e.name !== 'AbortError') throw e;
+      // NotReadableError ("Device in use") is often transient: the previous
+      // stream's driver handle has not been released yet. Wait, then retry once
+      // with relaxed constraints.
+      if (e.name !== 'OverconstrainedError') await new Promise((r) => setTimeout(r, 600));
       try {
         stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
         console.log(
@@ -2176,25 +2180,48 @@ window.addEventListener('pagehide', () => {
  * ============================================================ */
 
 // New wrapper for login scan using FaceLivenessIntegration
+let _loginScanPromise = null;
 async function beginLoginScan() {
-  if (window.teardownFaceLiveness) window.teardownFaceLiveness();
-  if (window.initLoginLiveness) {
-    const targetUser = window._loginTargetUser || null;
-    await window.initLoginLiveness(targetUser);
-  } else {
-    console.warn('[FaceLiveness] Integration not loaded, falling back to legacy');
-    await legacyBeginLoginScan();
+  // De-dupe: a second call while the first is still opening the camera would
+  // tear it down mid-getUserMedia and cause NotReadableError (Device in use).
+  if (_loginScanPromise) return _loginScanPromise;
+  _loginScanPromise = (async () => {
+    if (window.teardownFaceLiveness) window.teardownFaceLiveness();
+    // Give the OS/driver a moment to release the previous handle
+    await new Promise((r) => setTimeout(r, 150));
+    if (window.initLoginLiveness) {
+      const targetUser = window._loginTargetUser || null;
+      await window.initLoginLiveness(targetUser);
+    } else {
+      console.warn('[FaceLiveness] Integration not loaded, falling back to legacy');
+      await legacyBeginLoginScan();
+    }
+  })();
+  try {
+    return await _loginScanPromise;
+  } finally {
+    _loginScanPromise = null;
   }
 }
 
 // New wrapper for register scan using FaceLivenessIntegration
+let _registerScanPromise = null;
 async function beginRegisterScan() {
-  if (window.teardownFaceLiveness) window.teardownFaceLiveness();
-  if (window.initRegisterLiveness) {
-    await window.initRegisterLiveness();
-  } else {
-    console.warn('[FaceLiveness] Integration not loaded, falling back to legacy');
-    await legacyBeginRegisterScan();
+  if (_registerScanPromise) return _registerScanPromise;
+  _registerScanPromise = (async () => {
+    if (window.teardownFaceLiveness) window.teardownFaceLiveness();
+    await new Promise((r) => setTimeout(r, 150));
+    if (window.initRegisterLiveness) {
+      await window.initRegisterLiveness();
+    } else {
+      console.warn('[FaceLiveness] Integration not loaded, falling back to legacy');
+      await legacyBeginRegisterScan();
+    }
+  })();
+  try {
+    return await _registerScanPromise;
+  } finally {
+    _registerScanPromise = null;
   }
 }
 

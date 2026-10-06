@@ -396,6 +396,12 @@ export class FaceLiveness {
       );
     });
     this._setStat('cam', 'ok', 'Ready');
+    this._cameraLabel = videoTracks[0].label || '';
+    if (/droidcam|obs|virtual|manycam|epoccam|iriun/i.test(this._cameraLabel)) {
+      console.warn('[FaceLiveness] Virtual camera selected:', this._cameraLabel,
+        '- if it shows a placeholder, start the source app or pick another camera.');
+    }
+    this._noFaceSince = 0;
     console.log('[FaceLiveness] Shared camera started successfully');
   }
   
@@ -519,7 +525,6 @@ export class FaceLiveness {
   }
   
   _stop() {
-    console.trace('[FaceLiveness] _stop called by:');
     this.runId++;
     this.isRunning = false;
     if (this.frameRequestId !== null) {
@@ -630,8 +635,19 @@ export class FaceLiveness {
 
     const lm = r.faceLandmarks?.[0];
     const bs = r.faceBlendshapes?.[0];
+    if (lm && bs) { this._noFaceSince = 0; this._noFaceHintShown = false; }
     
     if (!lm || !bs) {
+      if (!this._noFaceSince) this._noFaceSince = Date.now();
+      if (Date.now() - this._noFaceSince > 8000 && !this._noFaceHintShown) {
+        this._noFaceHintShown = true;
+        const virt = /droidcam|obs|virtual|manycam|epoccam|iriun/i.test(this._cameraLabel || '');
+        this._say(
+          virt
+            ? 'No face detected. "' + this._cameraLabel + '" may be showing a placeholder. Start its source app or choose another camera.'
+            : 'No face detected. Check lighting and that the correct camera is selected.'
+        );
+      }
       this._setStat('face', '', 'Not detected');
       this._setStat('eyes', '', 'Not detected');
       if (this.faceGuide) this.faceGuide.classList.remove('good');

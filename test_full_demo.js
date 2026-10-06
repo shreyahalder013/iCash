@@ -8,8 +8,8 @@ fetch('http://localhost:4000/api/auth/register', {
   credentials: 'include',
   body: JSON.stringify({
     fullName: 'Demo User',
-    phone: '9876543299',
-    aadhaarNumber: '123456789099',
+    phone: '9876543398',
+    aadhaarNumber: '123456789998',
     pin: '1234',
     descriptors: descriptors
   })
