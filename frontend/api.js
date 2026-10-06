@@ -290,6 +290,12 @@ const api = {
 
   enrollBiometric: (data) => request('/api/biometric/enroll', { method: 'POST', body: data }),
 
+  // New liveness endpoints (MediaPipe-based, client-side liveness)
+  liveness: {
+    challenge: (data = {}) => request('/api/liveness/challenge', { method: 'POST', body: data }),
+    verify: (data) => request('/api/liveness/verify', { method: 'POST', body: data }),
+  },
+
   // Returns { ok, enrolled, provider } — NEVER returns face_descriptors
   enrollmentStatus: (userId) => request(`/api/biometric/profile/${userId}`, { method: 'GET' }),
 

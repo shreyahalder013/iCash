@@ -3,7 +3,8 @@
  * Bridges existing biometric.js DOM with new FaceLiveness component
  */
 
-import { FaceLiveness } from './FaceLiveness.js';
+// FaceLiveness is globally available from FaceLiveness.js (loaded before this script)
+const FaceLiveness = window.FaceLiveness;
 
 let faceLivenessInstance = null;
 
@@ -12,7 +13,7 @@ export async function initLoginLiveness(targetUser) {
   if (faceLivenessInstance) {
     faceLivenessInstance.destroy();
   }
-  
+
   const video = document.getElementById('login-video');
   const overlayCanvas = document.getElementById('login-overlay-canvas');
   const faceGuide = document.getElementById('face-guide')?.querySelector('.face-guide-frame');
@@ -28,7 +29,7 @@ export async function initLoginLiveness(targetUser) {
   // Tabs don't exist in the login scan screen
   const tabLogin = null;
   const tabReg = null;
-  
+
   // Status elements - use actual IDs from HTML
   const statusEls = {
     cam: document.getElementById('status-camera'),
@@ -38,12 +39,12 @@ export async function initLoginLiveness(targetUser) {
     blink: document.getElementById('status-blink'),
     id: document.getElementById('status-identity'),
   };
-  
+
   if (!video) {
     console.warn('[FaceLiveness] Login video element not found');
     return null;
   }
-  
+
   // Ensure steps and grid containers exist
   if (!stepsContainer) {
     console.warn('[FaceLiveness] Steps container not found');
@@ -51,7 +52,7 @@ export async function initLoginLiveness(targetUser) {
   if (!gridContainer) {
     console.warn('[FaceLiveness] Grid container not found');
   }
-  
+
   faceLivenessInstance = new FaceLiveness({
     mode: 'login',
     targetUser,
@@ -92,9 +93,9 @@ export async function initLoginLiveness(targetUser) {
         window.handleLivenessFallback();
       }
       window.dispatchEvent(new Event('liveness:fallback'));
-    }
+    },
   });
-  
+
   try {
     await faceLivenessInstance.init();
     return faceLivenessInstance;
@@ -109,37 +110,61 @@ export async function initRegisterLiveness() {
   if (faceLivenessInstance) {
     faceLivenessInstance.destroy();
   }
-  
+
   const video = document.getElementById('reg-video') || document.getElementById('register-video');
-  const overlayCanvas = document.getElementById('reg-overlay-canvas') || document.getElementById('register-overlay-canvas');
-  const faceGuide = document.getElementById('reg-face-guide')?.querySelector('.face-guide-frame') || 
-                    document.getElementById('register-face-guide')?.querySelector('.face-guide-frame');
-  const msg = document.getElementById('reg-banner-text') || document.getElementById('reg-instruction-text') ||
-              document.getElementById('register-banner-text');
-  const errBox = document.getElementById('reg-cam-error') || document.getElementById('reg-err') || 
-                 document.getElementById('register-cam-error');
-  const stepsContainer = document.getElementById('reg-steps') || document.getElementById('register-steps');
-  const gridContainer = document.getElementById('reg-status-grid') || document.getElementById('register-status-grid');
-  const retryBtn = document.getElementById('reg-retry-btn') || document.getElementById('register-retry-btn');
-  const cancelBtn = document.getElementById('reg-cancel-btn') || document.getElementById('register-cancel-btn');
-  const fallbackBtn = document.getElementById('reg-fallback-btn') || document.getElementById('register-fallback-btn');
-  const tabLogin = document.getElementById('reg-tab-login') || document.getElementById('register-tab-login');
-  const tabReg = document.getElementById('reg-tab-reg') || document.getElementById('register-tab-reg');
-  
+  const overlayCanvas =
+    document.getElementById('reg-overlay-canvas') ||
+    document.getElementById('register-overlay-canvas');
+  const faceGuide =
+    document.getElementById('reg-face-guide')?.querySelector('.face-guide-frame') ||
+    document.getElementById('register-face-guide')?.querySelector('.face-guide-frame');
+  const msg =
+    document.getElementById('reg-banner-text') ||
+    document.getElementById('reg-instruction-text') ||
+    document.getElementById('register-banner-text');
+  const errBox =
+    document.getElementById('reg-cam-error') ||
+    document.getElementById('reg-err') ||
+    document.getElementById('register-cam-error');
+  const stepsContainer =
+    document.getElementById('reg-steps') || document.getElementById('register-steps');
+  const gridContainer =
+    document.getElementById('reg-status-grid') || document.getElementById('register-status-grid');
+  const retryBtn =
+    document.getElementById('reg-retry-btn') || document.getElementById('register-retry-btn');
+  const cancelBtn =
+    document.getElementById('reg-cancel-btn') || document.getElementById('register-cancel-btn');
+  const fallbackBtn =
+    document.getElementById('reg-fallback-btn') || document.getElementById('register-fallback-btn');
+  const tabLogin =
+    document.getElementById('reg-tab-login') || document.getElementById('register-tab-login');
+  const tabReg =
+    document.getElementById('reg-tab-reg') || document.getElementById('register-tab-reg');
+
   const statusEls = {
-    cam: document.getElementById('reg-status-camera') || document.getElementById('register-status-camera'),
-    face: document.getElementById('reg-status-face') || document.getElementById('register-status-face'),
-    eyes: document.getElementById('reg-status-eyes') || document.getElementById('register-status-eyes'),
-    live: document.getElementById('reg-status-liveness') || document.getElementById('register-status-liveness'),
-    blink: document.getElementById('reg-status-blink') || document.getElementById('register-status-blink'),
-    id: document.getElementById('reg-status-identity') || document.getElementById('register-status-identity'),
+    cam:
+      document.getElementById('reg-status-camera') ||
+      document.getElementById('register-status-camera'),
+    face:
+      document.getElementById('reg-status-face') || document.getElementById('register-status-face'),
+    eyes:
+      document.getElementById('reg-status-eyes') || document.getElementById('register-status-eyes'),
+    live:
+      document.getElementById('reg-status-liveness') ||
+      document.getElementById('register-status-liveness'),
+    blink:
+      document.getElementById('reg-status-blink') ||
+      document.getElementById('register-status-blink'),
+    id:
+      document.getElementById('reg-status-identity') ||
+      document.getElementById('register-status-identity'),
   };
-  
+
   if (!video) {
     console.warn('[FaceLiveness] Register video element not found');
     return null;
   }
-  
+
   faceLivenessInstance = new FaceLiveness({
     mode: 'register',
     dom: {
@@ -177,9 +202,9 @@ export async function initRegisterLiveness() {
         window.handleRegisterLivenessFallback();
       }
       window.dispatchEvent(new Event('liveness:fallback'));
-    }
+    },
   });
-  
+
   try {
     await faceLivenessInstance.init();
     return faceLivenessInstance;
