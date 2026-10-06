@@ -1,6 +1,7 @@
 /**
  * FaceLiveness Integration
  * Bridges existing biometric.js DOM with new FaceLiveness component
+ * Simplified - FaceLiveness now handles server communication directly
  */
 
 // FaceLiveness is globally available from FaceLiveness.js (loaded before this script)
@@ -10,12 +11,20 @@ let faceLivenessInstance = null;
 
 // Initialize FaceLiveness for login screen
 export async function initLoginLiveness(targetUser) {
+  // Disable verify button during initialization to prevent double-click
+  const verifyBtn = document.getElementById('login-aadhaar-btn');
+  if (verifyBtn) verifyBtn.disabled = true;
+
+  // Idempotent: if already running or initializing, return existing instance
   if (faceLivenessInstance && (faceLivenessInstance.isRunning || faceLivenessInstance.isInitializing)) {
     console.log('[FaceLiveness] Login initialization already active; reusing instance');
+    if (verifyBtn) verifyBtn.disabled = false;
     return faceLivenessInstance;
   }
+  // Clean up any previous instance
   if (faceLivenessInstance) {
     faceLivenessInstance.destroy();
+    faceLivenessInstance = null;
   }
 
   const video = document.getElementById('login-video');
@@ -46,6 +55,7 @@ export async function initLoginLiveness(targetUser) {
 
   if (!video) {
     console.warn('[FaceLiveness] Login video element not found');
+    if (verifyBtn) verifyBtn.disabled = false;
     return null;
   }
 
@@ -102,6 +112,7 @@ export async function initLoginLiveness(targetUser) {
 
   try {
     await faceLivenessInstance.init();
+    if (verifyBtn) verifyBtn.disabled = false;
     return faceLivenessInstance;
   } catch (e) {
     console.error('[FaceLiveness] Init failed:', e);
@@ -115,6 +126,7 @@ export async function initLoginLiveness(targetUser) {
       errBox.classList.add('active');
     }
     if (retryBtn) retryBtn.style.display = '';
+    if (verifyBtn) verifyBtn.disabled = false;
     faceLivenessInstance.destroy();
     faceLivenessInstance = null;
     return null;
@@ -123,12 +135,20 @@ export async function initLoginLiveness(targetUser) {
 
 // Initialize FaceLiveness for register screen
 export async function initRegisterLiveness() {
+  // Disable register button during initialization to prevent double-click
+  const regBtn = document.getElementById('reg-submit-btn') || document.getElementById('register-submit-btn');
+  if (regBtn) regBtn.disabled = true;
+
+  // Idempotent: if already running or initializing, return existing instance
   if (faceLivenessInstance && (faceLivenessInstance.isRunning || faceLivenessInstance.isInitializing)) {
     console.log('[FaceLiveness] Registration initialization already active; reusing instance');
+    if (regBtn) regBtn.disabled = false;
     return faceLivenessInstance;
   }
+  // Clean up any previous instance
   if (faceLivenessInstance) {
     faceLivenessInstance.destroy();
+    faceLivenessInstance = null;
   }
 
   const video = document.getElementById('reg-video') || document.getElementById('register-video');
@@ -182,6 +202,7 @@ export async function initRegisterLiveness() {
 
   if (!video) {
     console.warn('[FaceLiveness] Register video element not found');
+    if (regBtn) regBtn.disabled = false;
     return null;
   }
 
@@ -227,6 +248,7 @@ export async function initRegisterLiveness() {
 
   try {
     await faceLivenessInstance.init();
+    if (regBtn) regBtn.disabled = false;
     return faceLivenessInstance;
   } catch (e) {
     console.error('[FaceLiveness] Register init failed:', e);
@@ -240,6 +262,7 @@ export async function initRegisterLiveness() {
       errBox.classList.add('active');
     }
     if (retryBtn) retryBtn.style.display = '';
+    if (regBtn) regBtn.disabled = false;
     faceLivenessInstance.destroy();
     faceLivenessInstance = null;
     return null;

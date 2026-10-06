@@ -33,10 +33,15 @@ function encrypt(descriptor) {
   const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
   
   // Convert descriptor to bytes (Float32Array -> Buffer)
+  // Use byteOffset/byteLength to handle pooled ArrayBuffers correctly
   const descriptorArray = descriptor instanceof Float32Array 
     ? descriptor 
     : new Float32Array(descriptor);
-  const plaintext = Buffer.from(descriptorArray.buffer);
+  const plaintext = Buffer.from(
+    descriptorArray.buffer,
+    descriptorArray.byteOffset,
+    descriptorArray.byteLength
+  );
   
   const encrypted = Buffer.concat([
     cipher.update(plaintext),
@@ -74,8 +79,12 @@ function decrypt(encrypted, iv, authTag) {
       decipher.final()
     ]);
     
-    // Convert back to Float32Array
-    return new Float32Array(decrypted.buffer);
+    // Convert back to Float32Array - handle pooled ArrayBuffer correctly
+    return new Float32Array(
+      decrypted.buffer,
+      decrypted.byteOffset,
+      decrypted.byteLength / 4
+    );
   } catch (e) {
     console.warn('[FaceTemplateService] Decryption failed:', e.message);
     return null;

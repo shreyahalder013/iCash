@@ -174,6 +174,389 @@
     --transition-fast: 0ms;
     --transition-normal: 0ms;
   }
+
+  /* Reference-style biometric sign-in layout.
+     Keeps the existing controls and verification semantics while making the
+     camera, state, progress, and diagnostics readable at a glance. */
+  #screen-login-scan {
+    min-height: 100dvh;
+    overflow: auto;
+    padding: clamp(8px, 1.6dvh, 14px);
+    align-items: stretch;
+    justify-content: flex-start;
+    background: #070b13;
+  }
+
+  #screen-login-scan .scan-wrap {
+    width: min(100%, 1000px);
+    min-height: calc(100dvh - 16px);
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+  }
+
+  #screen-login-scan .biometric-auth-card {
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    padding: clamp(10px, 1.8dvh, 16px);
+    display: grid;
+    grid-template-rows: auto auto minmax(260px, 1fr) auto auto auto auto;
+    gap: clamp(8px, 1.4dvh, 12px);
+    background: #101726;
+    border: 1px solid #1e293b;
+    border-radius: 14px;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
+  }
+
+  #screen-login-scan .auth-header {
+    margin: 0;
+    padding: 0 0 4px;
+    border-bottom: 0;
+  }
+
+  #screen-login-scan .auth-header-brand {
+    gap: 8px;
+  }
+
+  #screen-login-scan .brand-icon {
+    width: 38px;
+    height: 38px;
+    padding: 8px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #3b82f6, #06b6d4);
+    border: 0;
+  }
+
+  #screen-login-scan .brand-title {
+    font-size: 18px;
+    line-height: 1;
+  }
+
+  #screen-login-scan .brand-subtitle {
+    color: #3b82f6;
+    font-size: 8px;
+    letter-spacing: 0.14em;
+  }
+
+  #screen-login-scan .auth-header-actions {
+    gap: 6px;
+  }
+
+  #screen-login-scan .header-action-btn {
+    min-width: 0;
+    min-height: 32px;
+    padding: 6px 10px;
+    border-radius: 8px;
+    font-size: 11px;
+  }
+
+  #screen-login-scan .auth-panel {
+    display: contents;
+  }
+
+  #screen-login-scan .auth-panel-header {
+    grid-row: 2;
+    text-align: center;
+    margin: 0;
+  }
+
+  #screen-login-scan .auth-panel-header h1 {
+    font-size: clamp(16px, 2.6dvh, 20px);
+  }
+
+  #screen-login-scan .auth-subtitle {
+    display: none;
+  }
+
+  #screen-login-scan .auth-description {
+    color: #7d8aa3;
+    font-size: 12px;
+    margin-top: 2px;
+  }
+
+  #screen-login-scan .camera-container {
+    grid-row: 3;
+    min-height: 260px;
+    height: auto;
+    margin: 0;
+    border-radius: 14px;
+    background: #000;
+    border: 1px solid #1e293b;
+  }
+
+  #screen-login-scan .camera-container video {
+    object-fit: cover;
+  }
+
+  #screen-login-scan .camera-status-overlay {
+    bottom: 18px;
+    left: 50%;
+    right: auto;
+    width: auto;
+    transform: translateX(-50%);
+    padding: 5px 14px;
+    background: rgba(15, 23, 42, 0.88);
+    border: 1px solid #334155;
+    border-radius: 99px;
+    white-space: nowrap;
+  }
+
+  #screen-login-scan .instruction-banner {
+    grid-row: 4;
+    margin: 0;
+    border-radius: 10px;
+    padding: 8px;
+    background: #0f1d3a;
+    border-color: #1d3a73;
+    color: #7fb0ff;
+  }
+
+  #screen-login-scan .verification-progress {
+    grid-row: 5;
+    margin: 0;
+    padding: 0;
+    background: transparent;
+    border: 0;
+  }
+
+  #screen-login-scan .progress-header {
+    display: none;
+  }
+
+  #screen-login-scan .progress-steps {
+    display: flex;
+    gap: 4px;
+    align-items: flex-start;
+  }
+
+  #screen-login-scan .progress-step {
+    flex: 1;
+    min-width: 0;
+    display: block;
+    padding: 0;
+    text-align: center;
+    background: transparent;
+    border: 0;
+  }
+
+  #screen-login-scan .progress-step::before {
+    position: static;
+    display: block;
+    width: 100%;
+    height: 4px;
+    margin: 0 0 6px;
+    border-radius: 4px;
+    background: #1e293b;
+  }
+
+  #screen-login-scan .progress-step.is-active::before {
+    background: #3b82f6;
+  }
+
+  #screen-login-scan .progress-step.is-done::before {
+    background: #22c55e;
+  }
+
+  #screen-login-scan .step-indicator,
+  #screen-login-scan .step-content .step-detail,
+  #screen-login-scan .step-status {
+    display: none;
+  }
+
+  #screen-login-scan .step-content {
+    display: block;
+  }
+
+  #screen-login-scan .step-label {
+    display: none;
+  }
+
+  #screen-login-scan .progress-step.is-active .step-label {
+    display: block;
+    color: #e8edf6;
+    font-size: 12px;
+  }
+
+  #screen-login-scan .status-panel {
+    grid-row: 6;
+    margin: 0;
+    background: #0c1220;
+    border-color: #1e293b;
+  }
+
+  #screen-login-scan .btn-row {
+    grid-row: 7;
+    margin: 0;
+  }
+
+  @media (min-width: 760px) and (min-aspect-ratio: 1 / 1) {
+    #screen-login-scan .biometric-auth-card {
+      grid-template-columns: 1.4fr 1fr;
+      grid-template-rows: auto auto minmax(0, 1fr) auto;
+      grid-auto-flow: column;
+    }
+
+    #screen-login-scan .auth-header,
+    #screen-login-scan .auth-panel-header {
+      grid-column: 1 / -1;
+    }
+
+    #screen-login-scan .camera-container {
+      grid-column: 1;
+      grid-row: 3 / 6;
+    }
+
+    #screen-login-scan .instruction-banner {
+      grid-column: 2;
+      grid-row: 3;
+    }
+
+    #screen-login-scan .verification-progress {
+      grid-column: 2;
+      grid-row: 4;
+    }
+
+    #screen-login-scan .status-panel {
+      grid-column: 2;
+      grid-row: 5;
+    }
+
+    #screen-login-scan .btn-row {
+      grid-column: 1 / -1;
+      grid-row: 6;
+    }
+  }
+
+  /* Final reference-style overrides: placed last so the scan view wins over
+     the legacy biometric card rules above. */
+  #screen-login-scan {
+    min-height: 100dvh;
+    overflow: auto;
+    padding: 8px clamp(8px, 1.6dvw, 14px);
+    align-items: stretch;
+    justify-content: flex-start;
+    background: #070b13;
+  }
+
+  #screen-login-scan .scan-wrap {
+    width: min(100%, 1000px);
+    min-height: calc(100dvh - 16px);
+    margin: 0 auto;
+  }
+
+  #screen-login-scan .biometric-auth-card {
+    width: 100%;
+    max-width: none;
+    min-height: calc(100dvh - 16px);
+    margin: 0;
+    padding: clamp(10px, 1.8dvh, 16px);
+    display: grid;
+    grid-template-rows: auto auto minmax(260px, 1fr) auto auto auto auto;
+    gap: clamp(8px, 1.4dvh, 12px);
+    background: #101726;
+    border: 1px solid #1e293b;
+    border-radius: 14px;
+  }
+
+  #screen-login-scan .auth-panel { display: contents; }
+  #screen-login-scan .auth-header { margin: 0; padding: 0 0 4px; border: 0; }
+  #screen-login-scan .auth-panel-header {
+    grid-row: 2;
+    margin: 0;
+    text-align: center;
+  }
+  #screen-login-scan .auth-panel-header h1 { font-size: clamp(16px, 2.6dvh, 20px); }
+  #screen-login-scan .auth-subtitle { display: none; }
+  #screen-login-scan .auth-description { color: #7d8aa3; font-size: 12px; margin-top: 2px; }
+  #screen-login-scan .camera-container {
+    grid-row: 3;
+    min-height: 260px;
+    height: auto;
+    margin: 0;
+    border: 1px solid #1e293b;
+    border-radius: 14px;
+    background: #000;
+  }
+  #screen-login-scan .camera-status-overlay {
+    bottom: 18px;
+    left: 50%;
+    right: auto;
+    width: auto;
+    transform: translateX(-50%);
+    padding: 5px 14px;
+    background: rgba(15, 23, 42, 0.88);
+    border: 1px solid #334155;
+    border-radius: 99px;
+    white-space: nowrap;
+  }
+  #screen-login-scan .instruction-banner {
+    grid-row: 4;
+    margin: 0;
+    padding: 8px;
+    border-radius: 10px;
+    background: #0f1d3a;
+    border-color: #1d3a73;
+    color: #7fb0ff;
+  }
+  #screen-login-scan .verification-progress {
+    grid-row: 5;
+    margin: 0;
+    padding: 0;
+    background: transparent;
+    border: 0;
+  }
+  #screen-login-scan .progress-header { display: none; }
+  #screen-login-scan .progress-steps { display: flex; gap: 4px; }
+  #screen-login-scan .progress-step {
+    flex: 1;
+    min-width: 0;
+    display: block;
+    padding: 0;
+    text-align: center;
+    background: transparent;
+    border: 0;
+  }
+  #screen-login-scan .progress-step::before {
+    position: static;
+    display: block;
+    width: 100%;
+    height: 4px;
+    margin: 0 0 6px;
+    border-radius: 4px;
+    background: #1e293b;
+  }
+  #screen-login-scan .progress-step.is-active::before { background: #3b82f6; }
+  #screen-login-scan .progress-step.is-done::before { background: #22c55e; }
+  #screen-login-scan .step-indicator,
+  #screen-login-scan .step-detail,
+  #screen-login-scan .step-status { display: none; }
+  #screen-login-scan .step-content { display: block; }
+  #screen-login-scan .step-label { display: none; }
+  #screen-login-scan .progress-step.is-active .step-label {
+    display: block;
+    color: #e8edf6;
+    font-size: 12px;
+  }
+  #screen-login-scan .status-panel { grid-row: 6; margin: 0; background: #0c1220; }
+  #screen-login-scan .btn-row { grid-row: 7; margin: 0; }
+
+  @media (min-width: 760px) and (min-aspect-ratio: 1 / 1) {
+    #screen-login-scan .biometric-auth-card {
+      grid-template-columns: 1.4fr 1fr;
+      grid-template-rows: auto auto minmax(0, 1fr) auto;
+      grid-auto-flow: column;
+    }
+    #screen-login-scan .auth-header,
+    #screen-login-scan .auth-panel-header { grid-column: 1 / -1; }
+    #screen-login-scan .camera-container { grid-column: 1; grid-row: 3 / 6; }
+    #screen-login-scan .instruction-banner { grid-column: 2; grid-row: 3; }
+    #screen-login-scan .verification-progress { grid-column: 2; grid-row: 4; }
+    #screen-login-scan .status-panel { grid-column: 2; grid-row: 5; }
+    #screen-login-scan .btn-row { grid-column: 1 / -1; grid-row: 6; }
+  }
 }
 
 html.reduced-motion,

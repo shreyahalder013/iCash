@@ -179,6 +179,23 @@ class AuthService {
         },
       });
 
+      // Also create encrypted faceTemplate for liveness verify system
+      if (descriptors && descriptors.length > 0) {
+        const { faceTemplateService } = require('./faceTemplateService');
+        // Use the first (best) descriptor for the encrypted template
+        const primaryDescriptor = descriptors[0];
+        const encrypted = faceTemplateService.encrypt(primaryDescriptor);
+        await client.faceTemplate.create({
+          data: {
+            user_id: user.id,
+            encrypted_descriptor: encrypted.encrypted,
+            iv: encrypted.iv,
+            auth_tag: encrypted.authTag,
+            status: 'ACTIVE',
+          },
+        });
+      }
+
       // If registered as MERCHANT, create Merchant Profile
       if (clientRole === 'MERCHANT') {
         await client.merchantProfile.create({

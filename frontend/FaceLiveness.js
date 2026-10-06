@@ -1,6 +1,8 @@
 /**
  * iCash FaceLiveness Component
  * Client-side blink liveness using MediaPipe FaceLandmarker (WASM)
+ * Real 128D face embeddings via face-api.js FaceNet model
+ * Server-authoritative enrollment & verification
  * 
  * Designed to work with existing DOM structure in biometric.js
  * (login-video, face-guide, status grid, etc.)
@@ -40,7 +42,9 @@ const CFG = {
   enrolFrames: 12,
   matchMax: 0.085,
   challengeTimeoutMs: 15000,
-  templateKey: 'icash_face_template_v1'
+  // Template key removed - we now use server-side encrypted storage
+  modelLoadTimeoutMs: 20000,
+  embeddingModelTimeoutMs: 15000,
 };
 
 const STEPS = [
@@ -80,28 +84,8 @@ function score(bs, name) {
   return cat ? cat.score : 0;
 }
 
-const TPL_IDX = [10,152,234,454,33,133,263,362,61,291,1,168,70,300,105,334,129,358,205,425,127,356,93,323,172,397,58,288];
-
-function descriptor(lm) {
-  const iod = dist(lm[33], lm[263]) || 1;
-  const o = lm[1];
-  const v = [];
-  for (const i of TPL_IDX) {
-    v.push((lm[i].x - o.x) / iod, (lm[i].y - o.y) / iod);
-  }
-  return v;
-}
-
-const avg = list => list[0].map((_, i) => list.reduce((s, v) => s + v[i], 0) / list.length);
-const vdist = (a, b) => Math.sqrt(a.reduce((s, x, i) => s + (x - b[i]) ** 2, 0) / a.length);
-
-function inOval(lm) {
-  const xs = lm.map(p => p.x), ys = lm.map(p => p.y);
-  const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
-  const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
-  const h = Math.max(...ys) - Math.min(...ys);
-  return Math.abs(cx - .5) < .10 && Math.abs(cy - .5) < .10 && h > .38 && h < .85;
-}
+// 468-point MediaPipe landmark indices for iris/eye regions
+const IRIS_IDX = [468, 469, 470, 471, 472, 473, 474, 475, 476, 477]; // MediaPipe iris landmarks
 
 export class FaceLiveness {
   constructor(options = {}) {
@@ -113,6 +97,7 @@ export class FaceLiveness {
     this.onFallback = options.onFallback || (() => {});
     
     this.landmarker = null;
+    this.faceApiNets = null; // { tinyFaceDetector, faceLandmark68Net, faceRecognitionNet }
     this.video = this.dom.video || null;
     this.overlayCanvas = this.dom.overlayCanvas || null;
     this.faceGuide = this.dom.faceGuide || null;
@@ -127,7 +112,6 @@ export class FaceLiveness {
     this.tabReg = this.dom.tabReg || null;
     this.statusEls = this.dom.statusEls || {};
     
-    this.landmarker = null;
     this.stream = null;
     this.runId = 0;
     this.challenge = null;
@@ -140,6 +124,11 @@ export class FaceLiveness {
     this.initPromise = null;
     this._lastTs = 0;
     this._lastVideoTime = -1;
+    this._warnedNoFrames = false;
+    this._warnedTimestamp = false;
+    this._modelLoadAbortController = null;
+    this._embeddings = []; // Collected 128D embeddings during blink challenge
+    this._bestEmbedding = null; // Best quality embedding for enrollment/verification
     
     // State machine
     this.S = {
@@ -174,22 +163,65 @@ export class FaceLiveness {
   async _init() {
     this.firstFrameLogged = false;
     this.detectionErrorLogged = false;
+    this._warnedNoFrames = false;
+    this._warnedTimestamp = false;
+    this._embeddings = [];
+    this._bestEmbedding = null;
     console.log('[FaceLiveness] Initializing...');
     this._injectStyles();
     this._buildStepsAndGrid();
     this._bindEvents();
     console.log('[FaceLiveness] Starting camera before model initialization...');
     await this._startCamera();
+    // Await video metadata and first playable frame before creating landmarker
+    await this._awaitVideoReady();
     this._say('Camera ready. Position your face in the guide.');
-    console.log('[FaceLiveness] Loading model after camera is ready...');
+    console.log('[FaceLiveness] Loading MediaPipe FaceLandmarker model...');
     await this._loadModel();
+    console.log('[FaceLiveness] Loading face-api.js FaceNet embedding model...');
+    await this._loadEmbeddingModel();
     console.log('[FaceLiveness] Camera started, fetching challenge...');
     await this._fetchChallenge();
     console.log('[FaceLiveness] Starting main loop...');
     this._run();
     return this;
   }
-  
+
+  _awaitVideoReady() {
+    const video = this.video;
+    if (!video) return Promise.reject(new Error('NO_VIDEO_ELEMENT'));
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        cleanup();
+        reject(new Error('VIDEO_READY_TIMEOUT'));
+      }, 15000);
+      const cleanup = () => {
+        clearTimeout(timeout);
+        video.removeEventListener('loadedmetadata', onReady);
+        video.removeEventListener('canplay', onReady);
+        video.removeEventListener('playing', onReady);
+        video.removeEventListener('error', onError);
+      };
+      const onReady = () => {
+        if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0 && !video.paused && !video.ended) {
+          cleanup();
+          console.log('[FaceLiveness] Video ready:', video.videoWidth, 'x', video.videoHeight, 'readyState', video.readyState);
+          resolve();
+        }
+      };
+      const onError = () => {
+        cleanup();
+        reject(new Error('VIDEO_ERROR'));
+      };
+      video.addEventListener('loadedmetadata', onReady);
+      video.addEventListener('canplay', onReady);
+      video.addEventListener('playing', onReady);
+      video.addEventListener('error', onError);
+      // Also check current state in case events already fired
+      onReady();
+    });
+  }
+
   _injectStyles() {
     if (document.getElementById('face-liveness-styles')) return;
     const style = document.createElement('style');
@@ -253,27 +285,42 @@ export class FaceLiveness {
     this._stop();
     this.onFallback();
   }
-  
+
   async _loadModel() {
     if (this.landmarker) return this.landmarker;
 
     let vision;
-    try {
-      vision = await import('/mediapipe/vision_bundle.mjs');
-      console.log('[FaceLiveness] MediaPipe vision bundle loaded from local app assets');
-    } catch (localError) {
+    this._modelLoadAbortController = new AbortController();
+    
+    // Timeout for model loading
+    const modelLoadPromise = (async () => {
       try {
-        vision = await import(
-          'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs'
-        );
-        console.warn('[FaceLiveness] Local vision bundle unavailable; CDN bundle loaded');
-      } catch (remoteError) {
-        const error = new Error(
-          'The face verification engine could not be loaded. Check your internet connection and tap Retry.'
-        );
-        error.cause = remoteError;
-        throw error;
+        vision = await import('/mediapipe/vision_bundle.mjs');
+        console.log('[FaceLiveness] MediaPipe vision bundle loaded from local app assets');
+      } catch (localError) {
+        console.warn('[FaceLiveness] Local vision bundle unavailable, trying CDN...');
+        try {
+          vision = await import(
+            'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs'
+          );
+          console.warn('[FaceLiveness] CDN vision bundle loaded');
+        } catch (remoteError) {
+          throw new Error('The face verification engine could not be loaded. Check your internet connection and tap Retry.');
+        }
       }
+    })();
+
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('MODEL_LOAD_TIMEOUT')), CFG.modelLoadTimeoutMs)
+    );
+
+    try {
+      await Promise.race([modelLoadPromise, timeoutPromise]);
+    } catch (error) {
+      if (error.message === 'MODEL_LOAD_TIMEOUT') {
+        throw new Error('Face model took too long to load. Check your connection and tap Retry.');
+      }
+      throw error;
     }
 
     const { FaceLandmarker, FilesetResolver } = vision;
@@ -289,11 +336,37 @@ export class FaceLiveness {
     try {
       this.landmarker = await make('GPU');
       console.log('[FaceLiveness] FaceLandmarker model loaded with GPU delegate');
-    } catch {
-      this.landmarker = await make('CPU');
-      console.log('[FaceLiveness] FaceLandmarker model loaded with CPU delegate');
+    } catch (gpuError) {
+      console.warn('[FaceLiveness] GPU delegate failed, falling back to CPU:', gpuError.message);
+      try {
+        this.landmarker = await make('CPU');
+        console.log('[FaceLiveness] FaceLandmarker model loaded with CPU delegate');
+      } catch (cpuError) {
+        throw new Error('Failed to create FaceLandmarker with both GPU and CPU delegates');
+      }
     }
     return this.landmarker;
+  }
+
+  async _loadEmbeddingModel() {
+    // Load face-api.js models for 128D FaceNet embeddings
+    // Models are already loaded by biometric.js's ensureBioModels(), but we ensure they're ready
+    if (window._bioModelsLoaded && typeof faceapi !== 'undefined') {
+      console.log('[FaceLiveness] face-api.js models already loaded');
+      return;
+    }
+
+    console.log('[FaceLiveness] Waiting for face-api.js models...');
+    const startTime = Date.now();
+    
+    while (!window._bioModelsLoaded || typeof faceapi === 'undefined') {
+      if (Date.now() - startTime > CFG.embeddingModelTimeoutMs) {
+        throw new Error('Face recognition model failed to load. Tap Retry to try again.');
+      }
+      await new Promise(r => setTimeout(r, 100));
+    }
+    
+    console.log('[FaceLiveness] face-api.js FaceNet embedding model ready');
   }
   
   async _startCamera() {
@@ -339,15 +412,29 @@ export class FaceLiveness {
       this.S.need = data.requiredBlinks;
       this._say(data.instruction || 'Center your face in the guide');
     } else {
-      this.challenge = {
-        challengeId: 'local-' + crypto.randomUUID(),
-        nonce: crypto.randomUUID(),
-        challengeType: 'BLINK_TWICE',
-        requiredBlinks: 2,
-        expiresAt: new Date(Date.now() + 30000).toISOString()
-      };
-      this.S.need = 2;
-      this._say('Center your face in the guide');
+      // Registration mode - get liveness challenge (no face match needed for new user)
+      const res = await fetch('/api/liveness/challenge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({})
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) {
+        // Fallback to local challenge if server unavailable during registration
+        console.warn('[FaceLiveness] Server challenge unavailable, using local challenge');
+        this.challenge = {
+          challengeId: 'local-' + crypto.randomUUID(),
+          nonce: crypto.randomUUID(),
+          challengeType: 'BLINK_TWICE',
+          requiredBlinks: 2,
+          expiresAt: new Date(Date.now() + 30000).toISOString()
+        };
+      } else {
+        this.challenge = data;
+      }
+      this.S.need = this.challenge.requiredBlinks || 2;
+      this._say(this.challenge.instruction || 'Center your face in the guide');
     }
   }
   
@@ -357,6 +444,9 @@ export class FaceLiveness {
     this._resetState();
     this._say('Position your face in the guide.');
     this.isRunning = true;
+    // Reset timestamp state on every fresh run
+    this._lastTs = 0;
+    this._lastVideoTime = -1;
     this._scheduleFrame(my);
   }
   
@@ -368,12 +458,14 @@ export class FaceLiveness {
       closed: false,
       closedAt: 0,
       blinks: 0,
-      need: this.challenge?.requiredBlinks || (1 + Math.floor(Math.random() * 2)),
+      need: this.challenge?.requiredBlinks || 2,
       descs: [],
       t0: 0,
       lastTs: -1,
       c: 0
     };
+    this._embeddings = [];
+    this._bestEmbedding = null;
     this._setStep(0);
     if (this.faceGuide) this.faceGuide.classList.remove('good');
     this._resetStats();
@@ -424,7 +516,7 @@ export class FaceLiveness {
       cancelAnimationFrame(this.frameRequestId);
       this.frameRequestId = null;
     }
-    if (this.videoFrameRequestId !== null && this.video.cancelVideoFrameCallback) {
+    if (this.videoFrameRequestId !== null && this.video?.cancelVideoFrameCallback) {
       this.video.cancelVideoFrameCallback(this.videoFrameRequestId);
       this.videoFrameRequestId = null;
     }
@@ -437,6 +529,13 @@ export class FaceLiveness {
       }
     }
     this.landmarker = null;
+    if (this.video) {
+      this.video.srcObject = null;
+    }
+    if (this._modelLoadAbortController) {
+      this._modelLoadAbortController.abort();
+      this._modelLoadAbortController = null;
+    }
   }
 
   _scheduleFrame(my) {
@@ -460,6 +559,8 @@ export class FaceLiveness {
     
     const now = performance.now();
     const video = this.video;
+    
+    // Frame readiness guard: skip if video not ready
     const videoReady =
       video &&
       video.readyState >= 2 &&
@@ -468,53 +569,73 @@ export class FaceLiveness {
       !video.paused &&
       !video.ended;
     if (!videoReady) {
+      if (!this._warnedNoFrames) {
+        console.warn('[FaceLiveness] Video not ready, skipping frame');
+        this._warnedNoFrames = true;
+      }
       this._scheduleFrame(my);
       return;
     }
+    this._warnedNoFrames = false;
+
+    // Skip if video time hasn't advanced (no new frame)
     if (
       !Number.isFinite(video.currentTime) ||
-      video.currentTime === this._lastVideoTime ||
-      now <= this._lastTs
+      video.currentTime === this._lastVideoTime
     ) {
       this._scheduleFrame(my);
       return;
     }
+
+    // Strictly increasing timestamps
+    if (now <= this._lastTs) {
+      if (!this._warnedTimestamp) {
+        console.warn('[FaceLiveness] Non-monotonic timestamp, skipping frame');
+        this._warnedTimestamp = true;
+      }
+      this._scheduleFrame(my);
+      return;
+    }
+    this._warnedTimestamp = false;
+
     this._lastVideoTime = video.currentTime;
     this._lastTs = now;
-    {
-      let r;
-      try {
-        r = this.landmarker.detectForVideo(this.video, now);
-      } catch (error) {
-        if (!this.detectionErrorLogged) {
-          console.error('[FaceLiveness] First-frame detection failed:', error);
-        }
-        this._handleRuntimeFailure('Face detection failed. Tap Retry Camera.');
-        return;
+
+    let r;
+    try {
+      r = this.landmarker.detectForVideo(this.video, now);
+    } catch (error) {
+      if (!this.detectionErrorLogged) {
+        this.detectionErrorLogged = true;
+        console.error('[FaceLiveness] Detection failed:', error);
       }
-      const lm = r.faceLandmarks?.[0];
-      const bs = r.faceBlendshapes?.[0];
-      
-      if (!lm || !bs) {
-        this._setStat('face', '', 'Not detected');
-        this._setStat('eyes', '', 'Not detected');
-        if (this.faceGuide) this.faceGuide.classList.remove('good');
-        this.S.still = [];
-        this.S.noseHist = [];
-        if (this.S.phase > 0 && this.S.phase < 4) {
-          this.S.phase = 0;
-          this._setStep(0);
-          this.S.blinks = 0;
-          this._say('Face lost. Center your face in the guide');
-        }
-      } else {
-        if (!this.firstFrameLogged) {
-          this.firstFrameLogged = true;
-          console.log('[FaceLiveness] First face frame detected');
-        }
-        this._step(lm, bs, now);
-      }
+      this._handleRuntimeFailure('Face detection failed. Tap Retry Camera.');
+      return;
     }
+
+    const lm = r.faceLandmarks?.[0];
+    const bs = r.faceBlendshapes?.[0];
+    
+    if (!lm || !bs) {
+      this._setStat('face', '', 'Not detected');
+      this._setStat('eyes', '', 'Not detected');
+      if (this.faceGuide) this.faceGuide.classList.remove('good');
+      this.S.still = [];
+      this.S.noseHist = [];
+      if (this.S.phase > 0 && this.S.phase < 4) {
+        this.S.phase = 0;
+        this._setStep(0);
+        this.S.blinks = 0;
+        this._say('Face lost. Center your face in the guide');
+      }
+    } else {
+      if (!this.firstFrameLogged) {
+        this.firstFrameLogged = true;
+        console.log('[FaceLiveness] First face frame detected');
+      }
+      this._step(lm, bs, now);
+    }
+
     this._scheduleFrame(my);
   }
 
@@ -547,7 +668,7 @@ export class FaceLiveness {
     if (this.retryBtn) this.retryBtn.style.display = '';
   }
   
-  _step(lm, bs, now) {
+  async _step(lm, bs, now) {
     const centered = inOval(lm);
     if (this.faceGuide) this.faceGuide.classList.toggle('good', centered);
     this._setStat('face', centered ? 'ok' : 'bad', centered ? 'Detected' : 'Adjust position');
@@ -573,6 +694,8 @@ export class FaceLiveness {
       this._setStep(0);
       this.S.still = [];
       this.S.blinks = 0;
+      this._embeddings = [];
+      this._bestEmbedding = null;
       return;
     }
     
@@ -623,12 +746,30 @@ export class FaceLiveness {
         if (d >= CFG.minBlinkMs && d <= CFG.maxBlinkMs) {
           this.S.blinks++;
           this._setStat('blink', 'ok', `${this.S.blinks}/${this.S.need}`);
+          
+          // Capture face embedding on each valid blink (eyes open frame after blink)
+          // This gives us multiple embeddings across slight pose variations
+          try {
+            const embedding = await this._captureEmbedding();
+            if (embedding) {
+              this._embeddings.push(embedding);
+              // Keep best quality embedding (most frontal)
+              if (!this._bestEmbedding || this._embeddingQuality(embedding) > this._embeddingQuality(this._bestEmbedding)) {
+                this._bestEmbedding = embedding;
+              }
+            }
+          } catch (e) {
+            console.warn('[FaceLiveness] Embedding capture failed:', e.message);
+          }
+          
           if (this.S.blinks >= this.S.need) {
             this.S.phase = 4;
             this._setStep(4);
-            this.S.descs = [];
             this._say('Matching identity...');
             this._setStat('id', 'wait', 'Checking');
+            
+            // After blink challenge complete, proceed to server verification/enrollment
+            await this._completeServerFlow();
           }
         }
       }
@@ -638,41 +779,164 @@ export class FaceLiveness {
       }
       return;
     }
+  }
+
+  async _captureEmbedding() {
+    if (!this.video || typeof faceapi === 'undefined') return null;
     
-    if (this.S.phase === 4) {
-      if (L < CFG.open && R < CFG.open) this.S.descs.push(descriptor(lm));
-      if (this.S.descs.length >= CFG.enrolFrames) {
-        const d = avg(this.S.descs);
-        if (this.mode === 'register') {
-          localStorage.setItem(CFG.templateKey, JSON.stringify(d));
-          this._setStat('id', 'ok', 'Enrolled');
-          this._finish(d, 0);
-        } else {
-          const tpl = JSON.parse(localStorage.getItem(CFG.templateKey) || 'null');
-          if (!tpl) {
-            this._setStat('id', 'bad', 'No template');
-            this._fail('No face registered yet. Switch to Register face first.');
-            return;
-          }
-          const diff = vdist(d, tpl);
-          console.info('match distance', diff.toFixed(4), 'threshold', CFG.matchMax);
-          if (diff <= CFG.matchMax) {
-            this._setStat('id', 'ok', 'Matched');
-            this._finish(d, diff);
-          } else {
-            this._setStat('id', 'bad', 'No match');
-            this._fail('Face did not match. Tap Try Again or use Aadhaar & PIN sign-in.');
-          }
-        }
-      }
+    try {
+      // Use face-api.js to get 128D FaceNet embedding
+      const detection = await faceapi
+        .detectSingleFace(this.video, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.3 }))
+        .withFaceLandmarks()
+        .withFaceDescriptor();
+      
+      if (!detection || !detection.descriptor) return null;
+      
+      // Return as plain array for JSON serialization
+      return Array.from(detection.descriptor);
+    } catch (e) {
+      console.warn('[FaceLiveness] face-api.js detection failed:', e.message);
+      return null;
     }
   }
-  
-  _finish(d, score) {
+
+  _embeddingQuality(embedding) {
+    // Quality heuristic: prefer embeddings captured when face is well-centered
+    // For now, just return a constant - in practice could use face size, pose, etc.
+    return 1.0;
+  }
+
+  async _completeServerFlow() {
+    if (!this.challenge || this._embeddings.length === 0) {
+      this._fail('Insufficient biometric data captured. Please try again.');
+      return;
+    }
+
+    // For registration: submit registration form with captured descriptors
+    // For login: verify challenge with server
+    if (this.mode === 'register') {
+      await this._completeRegistration();
+    } else {
+      await this._completeLogin();
+    }
+  }
+
+  async _completeRegistration() {
+    this._setStat('id', 'wait', 'Registering...');
+    this._say('Creating your account...');
+
+    try {
+      // Use all collected embeddings as descriptors (multiple samples for robustness)
+      const descriptors = this._embeddings.length > 0 ? this._embeddings : [this._bestEmbedding].filter(Boolean);
+      
+      if (descriptors.length === 0) {
+        throw new Error('No valid face descriptors captured. Please try again.');
+      }
+
+      // Get pending registration payload from script.js
+      const regPayload = window._pendingRegPayload;
+      if (!regPayload) {
+        throw new Error('Registration data not found. Please start over.');
+      }
+
+      // Submit registration with biometric descriptors (array of 128-element arrays, max 10)
+      const registerRes = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          ...regPayload,
+          descriptors: descriptors
+        })
+      });
+
+      const data = await registerRes.json().catch(() => ({}));
+
+      if (!registerRes.ok || !data.ok || !data.user) {
+        throw new Error(data.message || 'Registration failed.');
+      }
+
+      console.log('[FaceLiveness] Registration succeeded, user created:', data.user.id);
+      this._setStat('id', 'ok', 'Enrolled');
+      this._finish({ mode: 'register', blinks: this.S.blinks, matchDistance: 0, at: Date.now() }, data.user);
+
+    } catch (err) {
+      console.error('[FaceLiveness] Registration error:', err);
+      this._setStat('id', 'bad', 'Failed');
+      this._fail(err.message || 'Registration failed. Please try again.');
+    }
+  }
+
+  async _completeLogin() {
+    this._setStat('id', 'wait', 'Verifying...');
+    this._say('Verifying with server...');
+
+    try {
+      // Use the best quality embedding for verification
+      if (!this._bestEmbedding) {
+        throw new Error('No valid face embedding captured. Please try again.');
+      }
+
+      const verifyPayload = {
+        challengeId: this.challenge.challengeId,
+        nonce: this.challenge.nonce,
+        descriptor: this._bestEmbedding,
+        blinks: this.S.blinks,
+        durationMs: performance.now() - this.S.t0,
+        mode: this.mode
+      };
+
+      console.log('[FaceLiveness] Sending verification to server...', { 
+        challengeId: this.challenge.challengeId, 
+        blinks: this.S.blinks,
+        embeddingLength: this._bestEmbedding.length 
+      });
+
+      const verifyRes = await fetch('/api/liveness/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(verifyPayload)
+      });
+
+      const data = await verifyRes.json().catch(() => ({}));
+
+      if (!verifyRes.ok || !data.ok || !data.biometricToken) {
+        throw new Error(data.message || 'Identity verification failed.');
+      }
+
+      console.log('[FaceLiveness] Server verification succeeded, got biometricToken');
+
+      // Use biometricToken to login
+      const authRes = await fetch('/api/auth/login-biometric', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ biometricToken: data.biometricToken })
+      });
+
+      const authData = await authRes.json().catch(() => ({}));
+
+      if (!authRes.ok || !authData.ok || !authData.user) {
+        throw new Error(authData.message || 'Failed to establish session');
+      }
+
+      this._setStat('id', 'ok', 'Matched');
+      this._finish({ mode: 'login', blinks: this.S.blinks, matchDistance: data.distance || 0, at: Date.now() }, authData.user);
+
+    } catch (err) {
+      console.error('[FaceLiveness] Login error:', err);
+      this._setStat('id', 'bad', 'Failed');
+      this._fail(err.message || 'Login failed. Please try again.');
+    }
+  }
+
+  _finish(detail, user) {
     this._setStep(6);
     if (this.faceGuide) this.faceGuide.classList.add('good');
     this._say(this.mode === 'register' ? 'Face registered' : 'Authorized');
-    const detail = { mode: this.mode, blinks: this.S.blinks, matchDistance: score, at: Date.now() };
+    detail.user = user;
     this._stop();
     this.onSuccess(detail);
     this.faceGuide?.dispatchEvent(new CustomEvent('liveness:success', { detail }));
@@ -681,6 +945,16 @@ export class FaceLiveness {
   destroy() {
     this._stop();
     this.isInitializing = false;
+    this.initPromise = null;
+    this.challenge = null;
+    this.firstFrameLogged = false;
+    this.detectionErrorLogged = false;
+    this._warnedNoFrames = false;
+    this._warnedTimestamp = false;
+    this._lastTs = 0;
+    this._lastVideoTime = -1;
+    this._embeddings = [];
+    this._bestEmbedding = null;
   }
 }
 
