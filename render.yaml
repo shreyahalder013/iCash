@@ -48,3 +48,7 @@ services:
         sync: false
       - key: BIO_TOKEN_JWT_SECRET
         sync: false
+      - key: BIOMETRIC_MIN_LIVENESS_CONFIDENCE
+        sync: false
+      - key: BIOMETRIC_CHALLENGE_TTL_MS
+        sync: false

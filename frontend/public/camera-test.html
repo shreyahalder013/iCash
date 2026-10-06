@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>iCash Camera Diagnostic</title>
+<style>
+:root{--bg:#0b1220;--panel:#111a2b;--line:#1f2c44;--txt:#e6edf7;--mute:#6f7f9a;--blue:#3b82f6;--ok:#22c55e;--err:#f87171;--warn:#f59e0b}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.5 system-ui,Segoe UI,Roboto,sans-serif;display:flex;justify-content:center;padding:24px}
+.app{width:100%;max-width:640px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:24px}
+h1{font-size:18px;margin:0 0 16px}
+.grid{display:grid;gap:12px;margin-bottom:16px}
+.row{display:flex;gap:12px;align-items:flex-start}
+.label{font-size:12px;font-weight:600;color:var(--mute);min-width:140px;flex-shrink:0}
+.value{font-family:monospace;font-size:13px;word-break:break-all}
+.btn{display:inline-flex;align-items:center;gap:8px;padding:12px 20px;border-radius:10px;font-weight:600;font-size:14px;cursor:pointer;border:none;transition:all .2s}
+.btn-primary{background:var(--blue);color:#fff}
+.btn-primary:hover{filter:brightness(1.1)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.video-wrap{position:relative;width:100%;aspect-ratio:4/3;background:#000;border-radius:8px;overflow:hidden;margin-bottom:16px}
+video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+.log{background:#050a12;border:1px solid var(--line);border-radius:8px;padding:12px;font-family:monospace;font-size:11px;max-height:300px;overflow:auto;color:#94a3b8}
+.log .ok{color:var(--ok)}.log .err{color:var(--err)}.log .warn{color:var(--warn)}.log .info{color:var(--blue)}
+.badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;font-family:monospace}
+.badge.ok{background:rgba(34,197,94,.2);color:var(--ok)}
+.badge.err{background:rgba(248,113,113,.2);color:var(--err)}
+.badge.warn{background:rgba(245,158,11,.2);color:var(--warn)}
+</style>
+</head>
+<body>
+<main class="app">
+  <h1>iCash Camera Diagnostic</h1>
+
+  <div class="grid">
+    <div class="row"><span class="label">isSecureContext</span><span class="value"><span class="badge" id="secureBadge">checking…</span></span></div>
+    <div class="row"><span class="label">User Agent</span><span class="value" id="ua">—</span></div>
+    <div class="row"><span class="label">getUserMedia</span><span class="value"><span class="badge" id="gumBadge">checking…</span></span></div>
+    <div class="row"><span class="label">Media Devices</span><span class="value" id="mdCount">—</span></div>
+  </div>
+
+  <div class="video-wrap">
+    <video id="video" autoplay playsinline muted aria-label="Camera preview"></video>
+  </div>
+
+  <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
+    <button id="startBtn" class="btn btn-primary">Start Camera</button>
+    <button id="stopBtn" class="btn" style="background:var(--panel);border:1px solid var(--line);color:var(--txt);" disabled>Stop Camera</button>
+    <button id="enumBtn" class="btn" style="background:var(--panel);border:1px solid var(--line);color:var(--txt);">Enumerate Devices</button>
+  </div>
+
+  <div class="grid">
+    <div class="row"><span class="label">Status</span><span class="value" id="status">idle</span></div>
+    <div class="row"><span class="label">Track Count</span><span class="value" id="trackCount">0</span></div>
+    <div class="row"><span class="label">Video Size</span><span class="value" id="vidSize">—</span></div>
+    <div class="row"><span class="label">Track Label</span><span class="value" id="trackLabel">—</span></div>
+    <div class="row"><span class="label">Ready State</span><span class="value" id="readyState">—</span></div>
+    <div class="row"><span class="label">Error</span><span class="value" id="errorBox">none</span></div>
+  </div>
+
+  <button id="clearLog" class="btn" style="background:var(--panel);border:1px solid var(--line);color:var(--txt);width:100%;margin-top:8px">Clear Log</button>
+
+  <div class="log" id="log" aria-live="polite"></div>
+</main>
+
+<script>
+const video = document.getElementById('video');
+const logEl = document.getElementById('log');
+let stream = null;
+let cancelled = false;
+
+function log(msg, cls='') {
+  const line = document.createElement('div');
+  line.className = cls;
+  line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  logEl.prepend(line);
+}
+
+function setBadge(id, text, cls) {
+  const el = document.getElementById(id);
+  el.textContent = text;
+  el.className = 'badge ' + cls;
+}
+
+function setVal(id, text) {
+  document.getElementById(id).textContent = text;
+}
+
+function logError(err) {
+  const name = err?.name || 'Error';
+  const msg = err?.message || String(err);
+  log(`${name}: ${msg}`, 'err');
+  setVal('errorBox', `${name}: ${msg}`);
+  setBadge('gumBadge', name, 'err');
+}
+
+async function enumDevices() {
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const cams = devices.filter(d => d.kind === 'videoinput');
+    setVal('mdCount', `${cams.length} camera(s) found`);
+    cams.forEach((d,i) => log(`Camera ${i}: ${d.label || '(no label)'} [${d.deviceId.slice(0,12)}…]`));
+  } catch(e) { logError(e); }
+}
+
+function checkSecure() {
+  const ok = window.isSecureContext;
+  setBadge('secureBadge', ok ? 'true ✓' : 'false ✗', ok ? 'ok' : 'err');
+  if (!ok) log('Insecure context — camera will be blocked', 'warn');
+}
+
+function setVideoSrc(src) {
+  video.srcObject = src;
+}
+
+async function startCamera() {
+  if (stream) { log('Stream already active', 'warn'); return; }
+  cancelled = false;
+  setBtns(true);
+  setVal('status', 'requesting…');
+  log('Requesting camera with facingMode: user');
+  const constraints = { video: { facingMode: 'user', width: {ideal:640}, height: {ideal:480} }, audio: false };
+  try {
+    stream = await navigator.mediaDevices.getUserMedia(constraints);
+  } catch (e) {
+    log('Primary constraints failed, trying fallback', 'warn');
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    } catch (e2) {
+      logError(e2); setBtns(false); return;
+    }
+  }
+  log(`Got stream: ${stream.id} (${stream.getTracks().length} tracks)`, 'ok');
+  stream.getTracks().forEach((t,i) => log(`Track ${i}: ${t.kind} "${t.label}" readyState=${t.readyState}`));
+  setVal('trackCount', stream.getTracks().length);
+  if (stream.getVideoTracks()[0]) setVal('trackLabel', stream.getVideoTracks()[0].label || '(no label)');
+
+  video.srcObject = stream;
+  log('srcObject assigned');
+
+  await new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error('CAMERA_TIMEOUT')), 10000);
+    const onMeta = () => {
+      log(`loadedmetadata: ${video.videoWidth}x${video.videoHeight}`);
+      video.onloadedmetadata = null;
+    };
+    video.onloadedmetadata = onMeta;
+    const onPlay = () => {
+      clearTimeout(timeout);
+      video.onplaying = null;
+      if (video.videoWidth > 0) {
+        log(`Video playing: ${video.videoWidth}x${video.videoHeight}`, 'ok');
+        setVal('vidSize', `${video.videoWidth}x${video.videoHeight}`);
+        setVal('readyState', video.readyState);
+        resolve();
+      } else { reject(new Error('NO_VIDEO_DIMENSIONS')); }
+    };
+    video.onplaying = onPlay;
+    video.onerror = (e) => { clearTimeout(timeout); reject(new Error('VIDEO_ERROR')); };
+    video.play().catch(e => { log(`play() rejected: ${e.name}: ${e.message}`, 'warn'); });
+  }).then(() => {
+    setVal('status', 'running');
+    setVal('readyState', video.readyState);
+    setVal('trackCount', stream.getTracks().length);
+    setVal('vidSize', `${video.videoWidth}x${video.videoHeight}`);
+    if (stream.getVideoTracks()[0]) setVal('trackLabel', stream.getVideoTracks()[0].label);
+    setBtns(false, true);
+    log('Camera started successfully', 'ok');
+  }).catch(e => { logError(e); setBtns(false); });
+}
+
+function stopCamera() {
+  cancelled = true;
+  if (stream) {
+    stream.getTracks().forEach(t => { log(`Stopping track: ${t.kind} "${t.label}"`); t.stop(); });
+    stream = null;
+  }
+  video.srcObject = null;
+  setVal('status', 'stopped');
+  setVal('trackCount', 0);
+  setVal('vidSize', '—');
+  setVal('trackLabel', '—');
+  setBtns(false);
+  log('Camera stopped');
+}
+
+function setBtns(running, started=false) {
+  document.getElementById('startBtn').disabled = running;
+  document.getElementById('stopBtn').disabled = !running;
+}
+
+document.getElementById('startBtn').onclick = startCamera;
+document.getElementById('stopBtn').onclick = stopCamera;
+document.getElementById('enumBtn').onclick = enumDevices;
+document.getElementById('clearLog').onclick = () => { logEl.innerHTML = ''; };
+
+checkSecure();
+setVal('ua', navigator.userAgent.slice(0,80)+'…');
+setBadge('gumBadge', navigator.mediaDevices?.getUserMedia ? 'available ✓' : 'missing ✗', navigator.mediaDevices?.getUserMedia ? 'ok' : 'err');
+enumDevices();
+
+video.addEventListener('play', () => log('event: play', 'info'));
+video.addEventListener('pause', () => log('event: pause', 'info'));
+video.addEventListener('ended', () => log('event: ended', 'warn'));
+video.addEventListener('error', e => logError(e));
+video.addEventListener('loadedmetadata', () => log(`loadedmetadata: ${video.videoWidth}x${video.videoHeight}`, 'info'));
+video.addEventListener('canplay', () => log('canplay', 'info'));
+video.addEventListener('playing', () => { log('playing', 'ok'); setVal('readyState', video.readyState); });
+video.addEventListener('waiting', () => log('waiting', 'warn'));
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) log('visibility: hidden', 'warn');
+  else log('visibility: visible', 'info');
+});
+
+log('Diagnostic page loaded. Click "Start Camera" to test.');
+</script>
+</body>
+</html>

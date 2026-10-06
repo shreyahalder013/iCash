@@ -67,7 +67,7 @@ app.use(
         mediaSrc: ["'self'", 'blob:', 'data:'],
         objectSrc: ["'none'"],
         frameSrc: ["'none'"],
-        workerSrc: ["'self'", 'blob:'],
+        workerSrc: ["'self'", 'blob:', "'wasm-unsafe-eval'"],
         upgradeInsecureRequests: process.env.NODE_ENV === 'production' ? [] : null,
       },
     },

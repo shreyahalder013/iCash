@@ -106,14 +106,46 @@ const CameraManager = {
       audio: false,
     };
 
+    console.log('[CameraManager] Requesting camera with constraints:', constraints);
     let stream;
     try {
       stream = await navigator.mediaDevices.getUserMedia(constraints);
-    } catch (_) {
-      stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      console.log(
+        '[CameraManager] getUserMedia succeeded, stream:',
+        stream.id,
+        'tracks:',
+        stream.getTracks().length
+      );
+      stream
+        .getTracks()
+        .forEach((t, i) =>
+          console.log(
+            `[CameraManager] Track ${i}: kind=${t.kind} label="${t.label}" readyState=${t.readyState}`
+          )
+        );
+    } catch (e) {
+      console.warn(
+        '[CameraManager] Primary constraints failed:',
+        e.name,
+        e.message,
+        '- trying fallback'
+      );
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        console.log(
+          '[CameraManager] Fallback getUserMedia succeeded, stream:',
+          stream.id,
+          'tracks:',
+          stream.getTracks().length
+        );
+      } catch (e2) {
+        console.error('[CameraManager] Both getUserMedia attempts failed:', e2.name, e2.message);
+        throw e2;
+      }
     }
 
     videoEl.srcObject = stream;
+    console.log('[CameraManager] srcObject assigned to video element');
     this.activeStreams.set(videoEl, stream);
 
     // Wait for video to be actually playing with valid dimensions
@@ -132,6 +164,7 @@ const CameraManager = {
       };
 
       videoEl.onerror = () => {
+        console.error('[CameraManager] Video element error event');
         cleanup();
         reject(new Error('VIDEO_ERROR'));
       };
@@ -140,25 +173,47 @@ const CameraManager = {
       if (videoEl.readyState >= 1) {
         // HAVE_METADATA
         videoEl.oncanplay = () => {
+          console.log('[CameraManager] canplay event');
           // Wait for playing event to ensure frames are flowing
           videoEl.onplaying = () => {
             cleanup();
             // Verify actual dimensions
             if (videoEl.videoWidth > 0 && videoEl.videoHeight > 0) {
+              console.log(
+                '[CameraManager] Video playing:',
+                videoEl.videoWidth,
+                'x',
+                videoEl.videoHeight
+              );
               resolve();
             } else {
+              console.error('[CameraManager] playing but no dimensions');
               reject(new Error('NO_VIDEO_DIMENSIONS'));
             }
           };
         };
       } else {
         videoEl.onloadedmetadata = () => {
+          console.log(
+            '[CameraManager] loadedmetadata:',
+            videoEl.videoWidth,
+            'x',
+            videoEl.videoHeight
+          );
           videoEl.oncanplay = () => {
+            console.log('[CameraManager] canplay event');
             videoEl.onplaying = () => {
               cleanup();
               if (videoEl.videoWidth > 0 && videoEl.videoHeight > 0) {
+                console.log(
+                  '[CameraManager] Video playing:',
+                  videoEl.videoWidth,
+                  'x',
+                  videoEl.videoHeight
+                );
                 resolve();
               } else {
+                console.error('[CameraManager] playing but no dimensions');
                 reject(new Error('NO_VIDEO_DIMENSIONS'));
               }
             };
@@ -169,7 +224,12 @@ const CameraManager = {
       // Start playback - don't await inside Promise executor
       const playPromise = videoEl.play();
       if (playPromise !== undefined) {
-        playPromise.catch(() => {
+        playPromise.catch((e) => {
+          console.warn(
+            '[CameraManager] play() rejected (may recover via onplaying):',
+            e.name,
+            e.message
+          );
           // play() might reject if already playing or user interaction needed
           // The onplaying handler will still fire
         });
@@ -796,7 +856,7 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
-async function beginLoginScan() {
+async function legacyBeginLoginScan() {
   _loginActive = false;
   if (_loginOverlayTimer) {
     clearTimeout(_loginOverlayTimer);
@@ -1476,7 +1536,7 @@ function cancelLoginScan() {
   goTo('screen-welcome');
 }
 
-function teardownLoginScan() {
+function legacyTeardownLoginScan() {
   _loginActive = false;
   if (_loginOverlayTimer) {
     clearTimeout(_loginOverlayTimer);
@@ -1706,7 +1766,7 @@ function updateEnrollmentDots(count) {
   }
 }
 
-async function beginRegisterScan() {
+async function legacyBeginRegisterScan() {
   _regActive = false;
   const video = document.getElementById('reg-video');
   const errEl = document.getElementById('reg-cam-error');
@@ -2071,7 +2131,7 @@ function cancelRegisterScan() {
   goTo('screen-register-form');
 }
 
-function teardownRegisterScan() {
+function legacyTeardownRegisterScan() {
   _regActive = false;
   const video = document.getElementById('reg-video');
   CameraManager.stop(video);
@@ -2115,7 +2175,7 @@ async function beginLoginScan() {
     await window.initLoginLiveness(targetUser);
   } else {
     console.warn('[FaceLiveness] Integration not loaded, falling back to legacy');
-    // Fallback to original implementation would go here if needed
+    await legacyBeginLoginScan();
   }
 }
 
@@ -2126,70 +2186,52 @@ async function beginRegisterScan() {
     await window.initRegisterLiveness();
   } else {
     console.warn('[FaceLiveness] Integration not loaded, falling back to legacy');
+    await legacyBeginRegisterScan();
   }
 }
 
 // New teardown function for FaceLiveness
 function teardownLoginScan() {
   if (window.teardownFaceLiveness) window.teardownFaceLiveness();
-  // Also clear any legacy state
-  _loginActive = false;
-  if (_loginOverlayTimer) {
-    clearTimeout(_loginOverlayTimer);
-    _loginOverlayTimer = null;
-  }
-  BlinkStateMachine.reset();
-  CameraManager.stop(document.getElementById('login-video'));
-  if (window._loginLivenessSessionId) {
-    window.iCashApi.liveness?.reset(window._loginLivenessSessionId).catch(() => {});
-    window._loginLivenessSessionId = null;
-  }
+  legacyTeardownLoginScan();
 }
 
 function teardownRegisterScan() {
   if (window.teardownFaceLiveness) window.teardownFaceLiveness();
-  _regActive = false;
-  const video = document.getElementById('reg-video');
-  CameraManager.stop(video);
-  const oc = document.getElementById('reg-overlay-canvas');
-  if (oc) oc.getContext('2d').clearRect(0, 0, oc.width, oc.height);
-  if (window._regLivenessSessionId) {
-    window.iCashApi.liveness?.reset(window._regLivenessSessionId).catch(() => {});
-    window._regLivenessSessionId = null;
-  }
+  legacyTeardownRegisterScan();
 }
 
 // Backward compatibility: handleLivenessSuccess/fallback/cancel for existing callers
-window.handleLivenessSuccess = function(detail) {
+window.handleLivenessSuccess = function (detail) {
   // This will be called by FaceLivenessIntegration onSuccess
   // The existing completeLoginIdentityAndSession logic handles the rest
   console.log('[FaceLiveness] Login success callback:', detail);
 };
 
-window.handleLivenessFallback = function() {
+window.handleLivenessFallback = function () {
   console.log('[FaceLiveness] Fallback to PIN');
   // Navigate to PIN login screen
   goTo('screen-pin-login');
 };
 
-window.handleLivenessCancel = function() {
+window.handleLivenessCancel = function () {
   console.log('[FaceLiveness] Cancelled');
   // Clean up and return to welcome
   teardownLoginScan();
   goTo('screen-welcome');
 };
 
-window.handleRegisterLivenessSuccess = function(detail) {
+window.handleRegisterLivenessSuccess = function (detail) {
   console.log('[FaceLiveness] Register success callback:', detail);
   // The existing completeRegisterIdentityAndSession logic handles the rest
 };
 
-window.handleRegisterLivenessFallback = function() {
+window.handleRegisterLivenessFallback = function () {
   console.log('[FaceLiveness] Register fallback');
   goTo('screen-register-form');
 };
 
-window.handleRegisterLivenessCancel = function() {
+window.handleRegisterLivenessCancel = function () {
   console.log('[FaceLiveness] Register cancelled');
   teardownRegisterScan();
   goTo('screen-register-form');

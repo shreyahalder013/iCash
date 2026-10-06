@@ -727,6 +727,15 @@ function cameraErrorMessage(err) {
   if (err && err.message === 'NO_MEDIA_API') {
     return "This browser doesn't support webcam access. Use PIN authorization to sign in.";
   }
+  if (err && err.message === 'CAMERA_TIMEOUT') {
+    return 'Camera took too long to start. Ensure no other app is using the camera and try again.';
+  }
+  if (err && err.message === 'VIDEO_ERROR') {
+    return 'Video stream error. The camera may have been disconnected or is in use by another app.';
+  }
+  if (err && err.message === 'NO_VIDEO_DIMENSIONS') {
+    return 'Camera started but no video frames received. Try a different camera or restart the browser.';
+  }
   const name = err && err.name;
   if (
     name === 'NotAllowedError' ||
@@ -744,6 +753,9 @@ function cameraErrorMessage(err) {
   }
   if (name === 'OverconstrainedError') {
     return 'Camera resolution unsupported. Retrying with standard mobile camera settings.';
+  }
+  if (err && err.message && err.message.includes('wasm')) {
+    return 'Face model failed to load (WASM error). Ensure you are on HTTPS/localhost and try refreshing.';
   }
   return 'Camera permission unavailable. Close floating screen bubbles/overlays or use PIN authorization below.';
 }
