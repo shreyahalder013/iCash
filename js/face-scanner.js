@@ -403,8 +403,13 @@ function mountFaceScanner(container, opts) {
       faceMesh = new FaceMesh({
         locateFile: (file) => {
           // Serve MediaPipe files locally from /vendor/mediapipe/
-          // Add cache-busting version to bypass browser cache of old unpatched files
-          const base = '/vendor/mediapipe/';
+          let base = '/vendor/mediapipe/';
+          if (typeof API !== 'undefined' && typeof API === 'string' && API.startsWith('http')) {
+            try {
+              const u = new URL(API);
+              base = `${u.origin}/vendor/mediapipe/`;
+            } catch (_) {}
+          }
           // Map CDN filenames to local filenames
           const fileMap = {
             'face_mesh.wasm': 'face_mesh_solution_wasm_bin.wasm',
@@ -412,7 +417,7 @@ function mountFaceScanner(container, opts) {
             'face_mesh.js': 'face_mesh_solution_wasm_bin.js',
             'face_mesh_solution_packed_assets.data': 'face_mesh_solution_packed_assets.data',
           };
-          return base + (fileMap[file] || file) + '?v=csp1';
+          return base + (fileMap[file] || file) + '?v=csp2';
         }
       });
 

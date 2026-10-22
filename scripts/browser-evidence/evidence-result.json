@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-10-15T05:59:18.503Z",
+  "timestamp": "2026-10-22T14:06:04.019Z",
   "serverUrl": "http://localhost:4000",
   "cspHeader": "default-src 'self';base-uri 'self';font-src 'self' https://fonts.gstatic.com;form-action 'self';frame-ancestors 'self';img-src 'self' data: blob:;object-src 'none';script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://cdnjs.cloudflare.com;script-src-attr 'none';style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;upgrade-insecure-requests;connect-src 'self';media-src 'self' blob:;frame-src 'none';worker-src 'self' blob:",
   "directInitResult": {
@@ -15,11 +15,11 @@
   "recordedViolations": [],
   "networkRequestsSample": [
     {
-      "url": "http://localhost:4000/vendor/mediapipe/face_mesh.js",
+      "url": "http://localhost:4000/vendor/mediapipe/face_mesh.js?v=2.3",
       "method": "GET"
     },
     {
-      "url": "http://localhost:4000/vendor/mediapipe/face_mesh.js",
+      "url": "http://localhost:4000/vendor/mediapipe/face_mesh.js?v=2.3",
       "status": 200,
       "contentType": "application/javascript; charset=UTF-8"
     },
@@ -36,6 +36,11 @@
       "method": "GET"
     },
     {
+      "url": "http://localhost:4000/vendor/mediapipe/face_mesh.binarypb?v=csp_evidence",
+      "status": 200,
+      "contentType": "application/octet-stream"
+    },
+    {
       "url": "http://localhost:4000/vendor/mediapipe/face_mesh_solution_packed_assets_loader.js?v=csp_evidence",
       "status": 200,
       "contentType": "application/javascript; charset=UTF-8"
@@ -43,11 +48,6 @@
     {
       "url": "http://localhost:4000/vendor/mediapipe/face_mesh_solution_packed_assets.data?v=csp_evidence",
       "method": "GET"
-    },
-    {
-      "url": "http://localhost:4000/vendor/mediapipe/face_mesh.binarypb?v=csp_evidence",
-      "status": 200,
-      "contentType": "application/octet-stream"
     },
     {
       "url": "http://localhost:4000/vendor/mediapipe/face_mesh_solution_packed_assets.data?v=csp_evidence",
@@ -136,19 +136,18 @@
       "method": "GET"
     },
     {
-      "url": "http://localhost:4000/models/face_recognition_model-weights_manifest.json",
-      "status": 200,
-      "contentType": "application/json; charset=UTF-8"
-    },
-    {
       "url": "http://localhost:4000/models/tiny_face_detector_model-weights_manifest.json",
       "status": 200,
       "contentType": "application/json; charset=UTF-8"
     },
     {
-      "url": "http://localhost:4000/models/face_landmark_68_model-weights_manifest.json",
+      "url": "http://localhost:4000/models/face_recognition_model-weights_manifest.json",
       "status": 200,
       "contentType": "application/json; charset=UTF-8"
+    },
+    {
+      "url": "http://localhost:4000/models/tiny_face_detector_model.bin",
+      "method": "GET"
     }
   ],
   "consoleLogsSample": [
