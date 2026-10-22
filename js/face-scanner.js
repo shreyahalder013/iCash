@@ -21,12 +21,52 @@ let faceApiLoaded = false;
 let faceApiLoadingPromise = null;
 
 /**
+ * Verify that all required model files are accessible (return 200).
+ * Uses HEAD first, falls back to GET if needed.
+ * Returns true if all files exist, false otherwise.
+ */
+async function verifyModelFiles() {
+  const requiredFiles = [
+    '/models/tiny_face_detector_model-weights_manifest.json',
+    '/models/tiny_face_detector_model.bin',
+    '/models/face_landmark_68_model-weights_manifest.json',
+    '/models/face_landmark_68_model.bin',
+    '/models/face_recognition_model-weights_manifest.json',
+    '/models/face_recognition_model.bin'
+  ];
+
+  for (const file of requiredFiles) {
+    let res;
+    try {
+      // Try HEAD first (lightweight, no body)
+      res = await fetch(file, { method: 'HEAD', cache: 'no-cache' });
+      if (!res.ok) {
+        // Fallback: try GET with Range header (some servers don't support HEAD for static files)
+        res = await fetch(file, { 
+          method: 'GET', 
+          headers: { 'Range': 'bytes=0-0' },
+          cache: 'no-cache' 
+        });
+        if (!res.ok && res.status !== 206) {
+          console.error(`[Model Check] Missing or inaccessible: ${file} (${res.status})`);
+          return { ok: false, missingFile: file, status: res.status };
+        }
+      }
+    } catch (e) {
+      console.error(`[Model Check] Network error for ${file}:`, e.message);
+      return { ok: false, missingFile: file, error: e.message };
+    }
+  }
+  return { ok: true };
+}
+
+/**
  * Pre-load face-api.js neural recognition models.
- * Tries local static /models/ directory first, falls back to CDN.
+ * ONLY loads from local /models/ directory — no CDN fallback for security.
  */
 async function loadFaceApiModels() {
-  if (faceApiLoaded) return true;
-  if (faceApiLoadingPromise) return faceApiLoadingPromise;
+  if (faceApiLoaded) {return true;}
+  if (faceApiLoadingPromise) {return faceApiLoadingPromise;}
 
   faceApiLoadingPromise = (async () => {
     if (typeof faceapi === 'undefined') {
@@ -34,9 +74,17 @@ async function loadFaceApiModels() {
       return false;
     }
 
+    // Verify model files exist before attempting to load
+    const verifyResult = await verifyModelFiles();
+    if (!verifyResult.ok) {
+      console.error('[Face-API] Model files missing:', verifyResult);
+      // The UI will show the error via the caller
+      return false;
+    }
+
     const modelLocations = [
-      '/models',
-      'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/'
+      '/models'
+      // CDN fallback removed for security — models must be served locally
     ];
 
     for (const loc of modelLocations) {
@@ -51,7 +99,14 @@ async function loadFaceApiModels() {
         faceApiLoaded = true;
         return true;
       } catch (err) {
-        console.warn(`[Face-API] Failed loading from ${loc}:`, err.message);
+        // Distinguish between different load errors
+        if (err instanceof TypeError && err.message.includes('fetch')) {
+          console.warn(`[Face-API] Network error loading from ${loc}:`, err.message);
+        } else if (err.message && err.message.includes('CSP')) {
+          console.error(`[Face-API] CSP error loading from ${loc}:`, err.message);
+        } else {
+          console.warn(`[Face-API] Failed loading from ${loc}:`, err.message);
+        }
       }
     }
     return false;
@@ -123,7 +178,7 @@ function mountFaceScanner(container, opts) {
 
   function setCheck(k, state = 'on') {
     const el = checks[k];
-    if (!el) return;
+    if (!el) {return;}
     el.classList.remove('on', 'failed', 'active');
     const dot = el.querySelector('.dot');
     if (state === 'on') {
@@ -153,7 +208,8 @@ function mountFaceScanner(container, opts) {
 
   // SECURITY: A unique nonce per scan session — reset on every retry.
   // Prevents reuse of a previous successful liveness result across attempts.
-  let sessionNonce = crypto.randomUUID ? crypto.randomUUID() : (Date.now().toString(36) + Math.random().toString(36).slice(2));
+  // Use the sessionNonce passed from the caller (login/atm) to bind the challenge to the scan session
+  const sessionNonce = opts.sessionNonce || (crypto.randomUUID ? crypto.randomUUID() : (Date.now().toString(36) + Math.random().toString(36).slice(2)));
 
   // SECURITY: Guard flag — extractBiometricDescriptor can only fire ONCE per nonce.
   // Prevents multiple concurrent verification calls from a single scan session.
@@ -174,7 +230,7 @@ function mountFaceScanner(container, opts) {
 
   // Head Pose Tracking
   let headTurnState = 'CENTER'; // 'CENTER' -> 'TURNED' -> 'RETURNED'
-  let maxTurnYaw = 0;
+  let _maxTurnYaw = 0;
 
   // Anti-Spoofing & Temporal Proof
   let challengeStartTime = 0;
@@ -191,6 +247,7 @@ function mountFaceScanner(container, opts) {
   // Active Challenge Definition
   let currentChallenge = challengeData ? challengeData.challengeType : (mode === 'register' ? 'blink_twice' : 'blink_once');
   let currentChallengeId = challengeData ? challengeData.challengeId : null;
+  let resolvedAccountId = challengeData ? challengeData.accountId : null;
 
   // Landmarks for MediaPipe FaceMesh
   const LEFT_EYE = { p1: 33, p2: 160, p3: 158, p4: 133, p5: 153, p6: 145 };
@@ -209,12 +266,12 @@ function mountFaceScanner(container, opts) {
     const p4 = landmarks[eye.p4];
     const p5 = landmarks[eye.p5];
     const p6 = landmarks[eye.p6];
-    if (!p1 || !p2 || !p3 || !p4 || !p5 || !p6) return 0.3;
+    if (!p1 || !p2 || !p3 || !p4 || !p5 || !p6) {return 0.3;}
 
     const v1 = dist(p2, p6);
     const v2 = dist(p3, p5);
     const h = dist(p1, p4);
-    if (h === 0) return 0.3;
+    if (h === 0) {return 0.3;}
     return (v1 + v2) / (2.0 * h);
   }
 
@@ -226,12 +283,12 @@ function mountFaceScanner(container, opts) {
     const nose = landmarks[1];
     const leftOuter = landmarks[33];
     const rightOuter = landmarks[263];
-    if (!nose || !leftOuter || !rightOuter) return 0;
+    if (!nose || !leftOuter || !rightOuter) {return 0;}
 
     const dLeft = Math.abs(nose.x - leftOuter.x);
     const dRight = Math.abs(nose.x - rightOuter.x);
     const total = dLeft + dRight;
-    if (total === 0) return 0;
+    if (total === 0) {return 0;}
 
     // Relative offset: 0 is centered, negative is turned left, positive is turned right
     // Note: Video is mirrored (scaleX(-1)), so adjust accordingly
@@ -247,12 +304,12 @@ function mountFaceScanner(container, opts) {
     const forehead = landmarks[10];
     const chin = landmarks[152];
     const nose = landmarks[1];
-    if (!forehead || !chin || !nose) return 0;
+    if (!forehead || !chin || !nose) {return 0;}
 
     const dTop = Math.abs(nose.y - forehead.y);
     const dBottom = Math.abs(chin.y - nose.y);
     const total = dTop + dBottom;
-    if (total === 0) return 0;
+    if (total === 0) {return 0;}
 
     const ratio = (dBottom - dTop) / total;
     return ratio * 60; // Approx degrees
@@ -271,14 +328,14 @@ function mountFaceScanner(container, opts) {
   }
 
   function updateEyeTracking(landmarks, isClosed) {
-    if (!eyeTrackBox) return;
+    if (!eyeTrackBox) {return;}
     eyeTrackBox.style.display = 'block';
 
-    const leftCenter = (landmarks[468] && landmarks[468].x != null)
+    const leftCenter = (landmarks[468] && landmarks[468].x !== null)
       ? landmarks[468]
       : getPointCenter(landmarks, LEFT_EYE_PTS);
 
-    const rightCenter = (landmarks[473] && landmarks[473].x != null)
+    const rightCenter = (landmarks[473] && landmarks[473].x !== null)
       ? landmarks[473]
       : getPointCenter(landmarks, RIGHT_EYE_PTS);
 
@@ -291,15 +348,15 @@ function mountFaceScanner(container, opts) {
     if (eyeDotL) {
       eyeDotL.style.left = lx.toFixed(1) + '%';
       eyeDotL.style.top = ly.toFixed(1) + '%';
-      if (isClosed) eyeDotL.classList.add('closed');
-      else eyeDotL.classList.remove('closed');
+      if (isClosed) {eyeDotL.classList.add('closed');}
+      else {eyeDotL.classList.remove('closed');}
     }
 
     if (eyeDotR) {
       eyeDotR.style.left = rx.toFixed(1) + '%';
       eyeDotR.style.top = ry.toFixed(1) + '%';
-      if (isClosed) eyeDotR.classList.add('closed');
-      else eyeDotR.classList.remove('closed');
+      if (isClosed) {eyeDotR.classList.add('closed');}
+      else {eyeDotR.classList.remove('closed');}
     }
   }
 
@@ -309,7 +366,7 @@ function mountFaceScanner(container, opts) {
   }
 
   function stopAll() {
-    if (animFrameId) cancelAnimationFrame(animFrameId);
+    if (animFrameId) {cancelAnimationFrame(animFrameId);}
     animFrameId = null;
     if (stream) {
       stream.getTracks().forEach(t => t.stop());
@@ -321,28 +378,42 @@ function mountFaceScanner(container, opts) {
     pipelineState = 'FAILED';
     statusEl.textContent = msg;
     statusEl.style.color = 'var(--danger)';
-    if (stageKey && checks[stageKey]) setCheck(stageKey, 'failed');
+    if (stageKey && checks[stageKey]) {setCheck(stageKey, 'failed');}
 
     ring.style.display = 'none';
-    if (eyeTrackBox) eyeTrackBox.style.display = 'none';
+    if (eyeTrackBox) {eyeTrackBox.style.display = 'none';}
     restartBtn.style.display = 'inline-flex';
     cancelBtn.style.display = 'inline-flex';
     challengeBox.style.display = 'none';
     stopAll();
 
-    if (opts.onFailure) opts.onFailure({ stage: stageKey, error: msg });
+    if (opts.onFailure) {opts.onFailure({ stage: stageKey, error: msg });}
   }
 
   /* ---- Initialize MediaPipe Face Mesh ---- */
   async function initFaceMesh() {
     if (typeof FaceMesh === 'undefined') {
-      fail('camera', 'MediaPipe FaceMesh library not available');
+      const msg = 'MediaPipe FaceMesh library not loaded. Check network connection and CSP settings. See browser console (F12) for details.';
+      console.error('[FaceMesh]', msg);
+      fail('camera', msg);
       return false;
     }
 
     try {
       faceMesh = new FaceMesh({
-        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
+        locateFile: (file) => {
+          // Serve MediaPipe files locally from /vendor/mediapipe/
+          // Add cache-busting version to bypass browser cache of old unpatched files
+          const base = '/vendor/mediapipe/';
+          // Map CDN filenames to local filenames
+          const fileMap = {
+            'face_mesh.wasm': 'face_mesh_solution_wasm_bin.wasm',
+            'face_mesh_simd.wasm': 'face_mesh_solution_simd_wasm_bin.wasm',
+            'face_mesh.js': 'face_mesh_solution_wasm_bin.js',
+            'face_mesh_solution_packed_assets.data': 'face_mesh_solution_packed_assets.data',
+          };
+          return base + (fileMap[file] || file) + '?v=csp1';
+        }
       });
 
       faceMesh.setOptions({
@@ -356,11 +427,24 @@ function mountFaceScanner(container, opts) {
         latestResults = results;
       });
 
+      console.log('[FaceMesh] Initializing...');
       await faceMesh.initialize();
+      console.log('[FaceMesh] Initialized successfully');
       return true;
     } catch (e) {
-      console.error('FaceMesh init failed:', e);
-      fail('camera', 'Neural face tracking failed to initialize');
+      // Distinguish between different error types
+      let msg;
+      if (e instanceof EvalError || (e.message && e.message.includes('unsafe-eval'))) {
+        msg = 'Script blocked by Content Security Policy: eval-style code execution is not allowed. The MediaPipe glue files must be patched to remove eval-style code. Check browser console (F12) for details.';
+        console.error('[FaceMesh] CSP Error:', e);
+      } else if (e instanceof TypeError && e.message.includes('WebAssembly')) {
+        msg = 'WebAssembly initialization failed. This browser may not support WebAssembly or it is disabled. Check browser console (F12) for details.';
+        console.error('[FaceMesh] WebAssembly Error:', e);
+      } else {
+        msg = `Neural face tracking failed to initialize: ${e.message || e}. Check browser console (F12) for details.`;
+        console.error('[FaceMesh] Initialization error:', e);
+      }
+      fail('camera', msg);
       return false;
     }
   }
@@ -396,7 +480,7 @@ function mountFaceScanner(container, opts) {
   /* ---- Extract Biometric Embedding using Face-API ---- */
   async function extractBiometricDescriptor() {
     // SECURITY: Ensure descriptor extraction and verification only fires ONCE per scan session
-    if (descriptorExtractionTriggered) return;
+    if (descriptorExtractionTriggered) {return;}
     descriptorExtractionTriggered = true;
 
     // SECURITY: Reject static photos or simulated blinks that lack real EAR variation
@@ -486,14 +570,22 @@ function mountFaceScanner(container, opts) {
   /* ---- Server-Side Cryptographic Verification ---- */
   async function verifyWithBackend(liveDescriptor, livenessProof) {
     try {
+      if (!currentChallengeId) {
+        setCheck('identity', 'failed');
+        setCheck('auth', 'failed');
+        fail('identity', 'Biometric challenge not active. Please click Try Again.');
+        return;
+      }
+
       const apiBase = typeof API !== 'undefined' ? API : '/api';
+      const targetAccountId = resolvedAccountId || (challengeData ? challengeData.accountId : (State.user ? State.user.id : 1));
       const res = await fetch(apiBase + '/auth/biometric/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
           challengeId: currentChallengeId,
-          accountId: challengeData ? challengeData.accountId : (State.user ? State.user.id : 1),
+          accountId: targetAccountId,
           sessionNonce,
           liveDescriptor,
           livenessProof
@@ -518,9 +610,9 @@ function mountFaceScanner(container, opts) {
       stopAll();
 
       setTimeout(() => {
-        if (opts.onSuccess) opts.onSuccess(data);
+        if (opts.onSuccess) {opts.onSuccess(data);}
       }, 700);
-    } catch (e) {
+    } catch (_e) {
       setCheck('identity', 'failed');
       setCheck('auth', 'failed');
       fail('identity', 'Network error during biometric verification');
@@ -533,13 +625,13 @@ function mountFaceScanner(container, opts) {
     const FRAME_INTERVAL = 33; // ~30 FPS
 
     function loop(timestamp) {
-      if (cancelled) return;
+      if (cancelled) {return;}
       animFrameId = requestAnimationFrame(loop);
 
-      if (timestamp - lastSendTime < FRAME_INTERVAL) return;
+      if (timestamp - lastSendTime < FRAME_INTERVAL) {return;}
       lastSendTime = timestamp;
 
-      if (!faceMesh || !video || !video.videoWidth || video.readyState < 2) return;
+      if (!faceMesh || !video || !video.videoWidth || video.readyState < 2) {return;}
 
       // STEP 1: Verify video stream is a live MediaStream
       if (!(video.srcObject instanceof MediaStream) || !video.srcObject.active) {
@@ -550,7 +642,7 @@ function mountFaceScanner(container, opts) {
       // Send live frame to FaceMesh
       faceMesh.send({ image: video }).catch(() => {});
 
-      if (!latestResults) return;
+      if (!latestResults) {return;}
       const faces = latestResults.multiFaceLandmarks;
 
       // STEP 2: Strict Face Count Detection
@@ -561,7 +653,7 @@ function mountFaceScanner(container, opts) {
           telemetryEl.textContent = 'No face in frame';
           consecutiveQualityFrames = 0;
         }
-        if (eyeTrackBox) eyeTrackBox.style.display = 'none';
+        if (eyeTrackBox) {eyeTrackBox.style.display = 'none';}
         return;
       }
 
@@ -581,14 +673,14 @@ function mountFaceScanner(container, opts) {
       let minX = 1, maxX = 0, minY = 1, maxY = 0;
       for (let i = 0; i < landmarks.length; i++) {
         const p = landmarks[i];
-        if (p.x < minX) minX = p.x;
-        if (p.x > maxX) maxX = p.x;
-        if (p.y < minY) minY = p.y;
-        if (p.y > maxY) maxY = p.y;
+        if (p.x < minX) {minX = p.x;}
+        if (p.x > maxX) {maxX = p.x;}
+        if (p.y < minY) {minY = p.y;}
+        if (p.y > maxY) {maxY = p.y;}
       }
 
       const faceWidth = maxX - minX;
-      const faceHeight = maxY - minY;
+      const _faceHeight = maxY - minY;
       const centerX = (minX + maxX) / 2;
       const centerY = (minY + maxY) / 2;
 
@@ -606,11 +698,19 @@ function mountFaceScanner(container, opts) {
       framesAnalyzed++;
 
       // Update telemetry display safely
-      telemetryEl.textContent = `EAR: ${currentEAR.toFixed(3)} | Yaw: ${yaw.toFixed(1)}° | Pitch: ${pitch.toFixed(1)}°`;
+      // Compute a simple quality metric for display (0-100)
+      const centerQuality = Math.max(0, 1 - Math.max(
+        Math.abs(centerX - 0.5) / 0.15,
+        Math.abs(centerY - 0.5) / 0.22
+      ));
+      const poseQuality = Math.max(0, 1 - Math.max(Math.abs(yaw), Math.abs(pitch)) / 20);
+      const sizeQuality = Math.max(0, 1 - Math.abs(faceWidth - 0.4) / 0.2);
+      const displayQuality = Math.round((centerQuality * 0.4 + poseQuality * 0.4 + sizeQuality * 0.2) * 100);
+      telemetryEl.textContent = `EAR: ${currentEAR.toFixed(3)} | Yaw: ${yaw.toFixed(1)}° | Quality: ${displayQuality}%`;
 
       // Adaptive Baseline EAR Calibration
       earSamples.push(currentEAR);
-      if (earSamples.length > 30) earSamples.shift();
+      if (earSamples.length > 30) {earSamples.shift();}
 
       // ========================================================
       // STAGE 3: Centering & Quality Check
@@ -687,9 +787,17 @@ function mountFaceScanner(container, opts) {
           return;
         }
 
-        // EAR State Machine Thresholds
-        const closedThreshold = Math.min(0.22, baselineEAR * 0.65);
-        const openThreshold = Math.max(0.26, baselineEAR * 0.82);
+        // EAR State Machine Thresholds (adaptive & more robust)
+        // Use percentile-based baseline for more stable thresholds
+        const sortedEAR = [...earSamples].sort((a, b) => a - b);
+        const p10 = sortedEAR[Math.floor(sortedEAR.length * 0.1)] || baselineEAR;
+        const p90 = sortedEAR[Math.floor(sortedEAR.length * 0.9)] || baselineEAR;
+        const earDynamicRange = Math.max(0.02, p90 - p10);
+
+        // Closed threshold: adaptive, more lenient for natural blinks
+        const closedThreshold = Math.min(0.24, Math.max(0.15, p10 + earDynamicRange * 0.35));
+        // Open threshold: adaptive, ensures clear open state
+        const openThreshold = Math.max(0.25, Math.min(0.35, p90 - earDynamicRange * 0.25));
         const isClosed = currentEAR < closedThreshold;
 
         updateEyeTracking(landmarks, isClosed);
@@ -701,9 +809,16 @@ function mountFaceScanner(container, opts) {
           console.log(`[Anti-Spoof] EAR range validated: ${currentRange.toFixed(3)} >= ${EAR_RANGE_THRESHOLD}`);
         }
 
-        // Strict Temporal Blink Transitions
-        // OPEN -> CLOSING -> CLOSED (1-3 frames) -> OPENING -> OPEN
-        if (blinkPhase === 'OPEN' && currentEAR < baselineEAR * 0.75) {
+        // Compute quality metric for telemetry (0-100)
+        const _qualityScore = Math.min(100, Math.max(0,
+          (1 - Math.abs(currentEAR - baselineEAR) / Math.max(0.1, earDynamicRange)) * 50 +
+          (1 - Math.min(1, Math.abs(yaw) / 20)) * 30 +
+          (1 - Math.min(1, Math.abs(pitch) / 20)) * 20
+        ));
+
+        // Strict Temporal Blink Transitions (improved)
+        // OPEN -> CLOSING -> CLOSED -> OPENING -> OPEN
+        if (blinkPhase === 'OPEN' && currentEAR < baselineEAR * 0.78) {
           blinkPhase = 'CLOSING';
           blinkStartTime = Date.now();
         } else if (blinkPhase === 'CLOSING' && isClosed) {
@@ -714,17 +829,26 @@ function mountFaceScanner(container, opts) {
             closedFrameCount++;
           } else if (currentEAR > openThreshold) {
             const blinkDuration = Date.now() - blinkStartTime;
-            // A legitimate human blink takes between 100ms and 750ms and maintains closure for 1-12 frames
-            if (blinkDuration >= 90 && blinkDuration <= 800 && closedFrameCount >= 1 && closedFrameCount <= 15) {
+            // A legitimate human blink: 80-1000ms, 1-20 frames at 30fps
+            if (blinkDuration >= 80 && blinkDuration <= 1000 && closedFrameCount >= 1 && closedFrameCount <= 20) {
               blinkCount++;
               flashOnce();
-              console.log(`[Liveness] Valid blink #${blinkCount} recorded (${blinkDuration}ms, ${closedFrameCount} frames)`);
+              console.log(`[Liveness] Valid blink #${blinkCount} recorded (${blinkDuration}ms, ${closedFrameCount} frames, EAR: ${currentEAR.toFixed(3)})`);
             } else {
-              console.warn(`[Liveness] Rejected anomalous blink (${blinkDuration}ms, ${closedFrameCount} frames)`);
+              console.warn(`[Liveness] Rejected anomalous blink (${blinkDuration}ms, ${closedFrameCount} frames, EAR: ${currentEAR.toFixed(3)})`);
             }
             blinkPhase = 'OPEN';
             closedFrameCount = 0;
           }
+          // Timeout: if stuck in CLOSED too long without opening, reset
+          else if (Date.now() - blinkStartTime > 1200) {
+            blinkPhase = 'OPEN';
+            closedFrameCount = 0;
+          }
+        }
+        // Handle case where eye opens without passing through CLOSING->CLOSED (partial blink)
+        else if (blinkPhase === 'CLOSING' && currentEAR > openThreshold) {
+          blinkPhase = 'OPEN';
         }
 
         // Challenge Evaluation
@@ -751,7 +875,7 @@ function mountFaceScanner(container, opts) {
             challengeProg.textContent = `Step 1: Turn head slightly left (Current: ${yaw.toFixed(0)}°)`;
             if (yaw < -14) {
               headTurnState = 'TURNED';
-              maxTurnYaw = yaw;
+              _maxTurnYaw = yaw;
             }
           } else if (headTurnState === 'TURNED') {
             challengeProg.textContent = 'Step 2: Return head to center';
@@ -773,7 +897,7 @@ function mountFaceScanner(container, opts) {
             challengeProg.textContent = `Step 1: Turn head slightly right (Current: ${yaw.toFixed(0)}°)`;
             if (yaw > 14) {
               headTurnState = 'TURNED';
-              maxTurnYaw = yaw;
+              _maxTurnYaw = yaw;
             }
           } else if (headTurnState === 'TURNED') {
             challengeProg.textContent = 'Step 2: Return head to center';
@@ -813,7 +937,8 @@ function mountFaceScanner(container, opts) {
     setCheck('camera', 'active');
 
     // Reset counters and security flags
-    sessionNonce = crypto.randomUUID ? crypto.randomUUID() : (Date.now().toString(36) + Math.random().toString(36).slice(2));
+    // Note: sessionNonce is NOT reset here — it must match the server challenge.
+    // If user wants a fresh challenge, they should cancel and restart from login page.
     descriptorExtractionTriggered = false;
     earRangeValid = false;
     livenessConfirmed = false;
@@ -837,21 +962,80 @@ function mountFaceScanner(container, opts) {
         audio: false
       });
 
-      if (cancelled) return;
+      if (cancelled) {return;}
       video.srcObject = stream;
       ring.style.display = 'block';
       setCheck('camera', 'on');
 
-      // 2. Pre-fetch face recognition models in background
-      loadFaceApiModels();
+      // 1.5. Automatically fetch server challenge if not pre-provided (e.g. withdraw, send)
+      if (!currentChallengeId && mode !== 'register' && mode !== 'enroll') {
+        try {
+          const apiBase = typeof API !== 'undefined' ? API : '/api';
+          const targetAccountId = opts.accountId || (challengeData ? challengeData.accountId : (State.user ? State.user.id : undefined));
+          const cRes = await fetch(apiBase + '/auth/biometric/challenge', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+              accountId: targetAccountId,
+              sessionNonce
+            })
+          });
+          const cData = await cRes.json();
+          if (cRes.ok && cData.challengeId) {
+            currentChallengeId = cData.challengeId;
+            currentChallenge = cData.challengeType || currentChallenge;
+            if (cData.accountId) {resolvedAccountId = cData.accountId;}
+            setupChallengeUI();
+          } else if (cData.error === 'NO_BIOMETRIC_ENROLLED') {
+            fail('camera', cData.message || 'No Face ID enrolled for this account. Please enroll Face ID first.');
+            return;
+          } else {
+            console.warn('[FaceScanner] Challenge endpoint warning:', cData.error || cData);
+          }
+        } catch (err) {
+          console.warn('[FaceScanner] Failed to fetch challenge:', err);
+        }
+      }
+
+      // 2. Verify and pre-fetch face recognition models
+      statusEl.textContent = 'Verifying biometric models…';
+      
+      // Retry verification up to 3 times with delay (server might still be starting)
+      let modelsReady = false;
+      let verifyResult = { ok: false };
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        modelsReady = await loadFaceApiModels();
+        if (modelsReady) {break;}
+        verifyResult = await verifyModelFiles();
+        if (verifyResult.ok) {
+          modelsReady = true;
+          break;
+        }
+        if (attempt < 3) {
+          console.warn(`[Model Check] Attempt ${attempt} failed, retrying in 500ms...`);
+          await new Promise(r => setTimeout(r, 500));
+        }
+      }
+      
+      if (!modelsReady) {
+        // Get more details about what failed
+        let errorMsg = 'Biometric model files are missing or failed to load. ';
+        if (!verifyResult.ok) {
+          errorMsg += `Missing: ${verifyResult.missingFile} (${verifyResult.status || verifyResult.error || 'unknown error'}). `;
+        }
+        errorMsg += 'Please ensure the server is running (npm start) and refresh the page.';
+        fail('camera', errorMsg);
+        return;
+      }
 
       // 3. Initialize MediaPipe FaceMesh
       statusEl.textContent = 'Loading 3D neural mesh…';
       const meshReady = await initFaceMesh();
-      if (cancelled) return;
+      if (cancelled) {return;}
 
       if (!meshReady) {
-        fail('camera', 'Could not start 3D neural tracking');
+        // initFaceMesh already called fail() with detailed error
         return;
       }
 
@@ -869,8 +1053,8 @@ function mountFaceScanner(container, opts) {
   restartBtn.onclick = () => startCamera();
   cancelBtn.onclick = () => {
     stopAll();
-    if (opts.onCancel) opts.onCancel();
-    else nav('login');
+    if (opts.onCancel) {opts.onCancel();}
+    else {nav('login');}
   };
 
   // Start immediately
@@ -886,3 +1070,6 @@ function mountFaceScanner(container, opts) {
   });
   obs.observe(document.getElementById('app') || document.body, { childList: true, subtree: true });
 }
+
+// Expose for other modules (global scope in browser)
+window.mountFaceScanner = mountFaceScanner;

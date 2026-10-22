@@ -1,34 +1,89 @@
 /* =========================================================
    ICASH — Secure Login + Biometric Verification
-========================================================= */
-let selectedLoginUser = null;
+   ========================================================= */
+window.selectedLoginUser = null;
 
-route('login', function(){
+route('login', function() {
   navbar();
   const shell = el(`<div class="auth-shell"><div class="glass auth-card" id="loginBox"></div></div>`);
   mount(shell);
   renderLoginHome();
 });
 
-async function renderLoginHome(){
+async function renderLoginHome() {
   const box = document.getElementById('loginBox');
-  const targetUser = selectedLoginUser || State.user || { name: 'Siddharth Pal', phone: '+91 98765 43210', id: 1 };
 
-  box.innerHTML = `
-    <div class="auth-head">
-      <h2>Welcome back</h2>
-      <p>Sign in to <b>${targetUser.name}</b> (${targetUser.phone})</p>
-    </div>
-    <button class="btn btn-primary btn-block" id="faceLoginBtn" style="margin-bottom:10px;">${iconSvg('face')} Secure Face Login</button>
-    <button class="btn btn-ghost btn-block" id="pinLoginBtn" style="margin-bottom:12px;">Use PIN instead</button>
-    <button class="btn btn-outline btn-block btn-sm" id="switchAccBtn" style="margin-bottom:18px;">Switch account / phone</button>
-    <div style="text-align:center; border-top:1px solid var(--border); padding-top:14px;">
-      <button class="btn btn-outline btn-sm" id="emgBtn" style="color:var(--danger); border-color:rgba(255,92,122,0.35);">${iconSvg('alert')} Emergency PIN</button>
-    </div>
-    <p style="text-align:center; color:var(--muted2); font-size:12.5px; margin-top:16px;">No account? <a href="#register" style="color:var(--accent)">Create one</a></p>`;
+  // If a user was selected via "Switch account", show their name
+  // Otherwise show a generic welcome and ask for phone number
+  if (window.selectedLoginUser) {
+    const name = esc(window.selectedLoginUser.name);
+    const phone = esc(window.selectedLoginUser.phone);
+    box.innerHTML = `
+      <div class="auth-head">
+        <h2>Welcome back</h2>
+        <p>Sign in to <b>${name}</b> (${phone})</p>
+      </div>
+      <button class="btn btn-primary btn-block" id="faceLoginBtn" style="margin-bottom:10px;" aria-label="Sign in using face authentication" onclick="setupLoginButtons.faceLogin()">${iconSvg('face')} Secure Face Login</button>
+      <button class="btn btn-ghost btn-block" id="pinLoginBtn" style="margin-bottom:12px;" aria-label="Sign in using your PIN" onclick="setupLoginButtons.pinLogin()">Use PIN instead</button>
+      <button class="btn btn-outline btn-block btn-sm" id="switchAccBtn" style="margin-bottom:18px;" aria-label="Switch to a different account or phone number" onclick="setupLoginButtons.switchAccount()">Switch account / phone</button>
+      <div style="text-align:center; border-top:1px solid var(--border); padding-top:14px;">
+        <button class="btn btn-outline btn-sm" id="emgBtn" style="color:var(--danger); border-color:rgba(255,92,122,0.35);" aria-label="Enter emergency PIN to activate emergency protocol (demo)" onclick="setupLoginButtons.emergencyPin()">${iconSvg('alert')} Emergency PIN</button>
+      </div>
+      <p style="text-align:center; color:var(--muted2); font-size:12.5px; margin-top:16px;">No account? <a href="#register" style="color:var(--accent)">Create one</a></p>`;
+    setupLoginButtons(window.selectedLoginUser);
+  } else {
+    // No user selected yet - ask for phone number first
+    box.innerHTML = `
+      <div class="auth-head">
+        <h2>Welcome back</h2>
+        <p>Enter your registered phone number to continue</p>
+      </div>
+      <div class="field">
+        <label>Phone Number</label>
+        <input id="loginPhone" type="tel" placeholder="+91 XXXXX XXXXX" autocomplete="tel" aria-label="Enter your registered phone number">
+      </div>
+      <button class="btn btn-primary btn-block" id="findAccountBtn" aria-label="Find your account using the phone number" onclick="setupLoginButtons.findAccount()">Find Account</button>
+      <p style="text-align:center; color:var(--muted2); font-size:12.5px; margin-top:16px;">No account? <a href="#register" style="color:var(--accent)">Create one</a></p>`;
 
-  /* ---------- FACE LOGIN ---------- */
-  document.getElementById('faceLoginBtn').onclick = async () => {
+    document.getElementById('findAccountBtn').onclick = async () => {
+      const phone = normalizePhone(val('loginPhone').trim());
+      if (!phone) { toast('Enter your phone number', 'warn'); return; }
+
+      // Look up user by phone number via API
+      try {
+        const res = await fetch(API + '/user/by-phone', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ phone })
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          toast(err.error || 'Account not found', 'danger');
+          return;
+        }
+
+        const userData = await res.json();
+        window.selectedLoginUser = {
+          id: userData.id,
+          name: userData.name,
+          phone: userData.phone
+        };
+        renderLoginHome();
+      } catch (_err) {
+        toast('Failed to look up account. Please try again.', 'danger');
+      }
+    };
+  }
+}
+
+function setupLoginButtons(targetUser) {
+  // Define handlers as named functions so they can be referenced from onclick attributes
+  const faceLogin = async () => {
+    const box = document.getElementById('loginBox');
+    const btn = document.getElementById('faceLoginBtn');
+    if (btn) { btn.disabled = true; btn.innerHTML = `${iconSvg('face')} Initializing...`; }
     box.innerHTML = `
       <div class="auth-head">
         <h2>Initializing Biometrics</h2>
@@ -37,16 +92,16 @@ async function renderLoginHome(){
       <div style="text-align:center; padding:30px;"><div class="dot" style="margin:0 auto; width:28px; height:28px; border:2px solid var(--accent); border-top-color:transparent; border-radius:50%; animation:spin 1s linear infinite;"></div></div>`;
 
     try {
-      // 1. Request cryptographic single-use challenge from server for target account
+      const sessionNonce = crypto.randomUUID ? crypto.randomUUID() : (Date.now().toString(36) + Math.random().toString(36).slice(2));
+
       const res = await fetch(API + '/auth/biometric/challenge', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ accountId: targetUser.id, phone: targetUser.phone })
+        body: JSON.stringify({ accountId: targetUser.id, phone: targetUser.phone, sessionNonce })
       });
       const data = await res.json();
 
-      // If account does not have Face ID enrolled yet
       if (!res.ok && data.error === 'NO_BIOMETRIC_ENROLLED') {
         box.innerHTML = `
           <div class="auth-head">
@@ -56,21 +111,21 @@ async function renderLoginHome(){
           <div style="padding:10px 0 20px; font-size:13.5px; color:var(--muted); line-height:1.6;">
             To authenticate with your face, you must first enroll your Face ID.
           </div>
-          <button class="btn btn-primary btn-block" id="enrollFaceNowBtn" style="margin-bottom:10px;">${iconSvg('face')} Enroll Face ID Now</button>
-          <button class="btn btn-ghost btn-block" id="enrollFallbackPinBtn">Sign In With PIN Instead</button>`;
+          <button class="btn btn-primary btn-block" id="enrollFaceNowBtn" style="margin-bottom:10px;" onclick="setupLoginButtons.enrollFaceNow()">${iconSvg('face')} Enroll Face ID Now</button>
+          <button class="btn btn-ghost btn-block" id="enrollFallbackPinBtn" onclick="renderLoginHome()">Sign In With PIN Instead</button>`;
 
-        document.getElementById('enrollFaceNowBtn').onclick = () => renderEnrollFaceFlow(targetUser);
-        document.getElementById('enrollFallbackPinBtn').onclick = renderLoginHome;
+        setupLoginButtons.enrollFaceNow = () => renderEnrollFaceFlow(targetUser);
+        if (btn) { btn.disabled = false; btn.innerHTML = `${iconSvg('face')} Secure Face Login`; }
         return;
       }
 
       if (!res.ok || !data.challengeId) {
         toast(data.error || 'Could not initiate biometric challenge', 'danger');
         renderLoginHome();
+        if (btn) { btn.disabled = false; btn.innerHTML = `${iconSvg('face')} Secure Face Login`; }
         return;
       }
 
-      // 2. Mount face scanner with live challenge
       box.innerHTML = `
         <div class="auth-head">
           <h2>Biometric Verification</h2>
@@ -80,20 +135,16 @@ async function renderLoginHome(){
 
       mountFaceScanner(document.getElementById('loginFaceHolder'), {
         challenge: data,
+        sessionNonce: sessionNonce,
         onSuccess: async (authData) => {
-          // SECURITY FIX (VULN-3): Explicitly verify that the backend confirmed success.
-          // Never navigate to dashboard based on a network call alone — the response must
-          // contain success:true. Any ambiguity = authentication denied.
           if (!authData || authData.success !== true) {
             toast('Authentication rejected — identity verification failed', 'danger');
             renderLoginHome();
             return;
           }
 
-          // Reload full user state from the server-issued session
           await State.load();
 
-          // SECURITY: If server session is not established, do not proceed
           if (!State.session || !State.session.active) {
             toast('Session could not be established — please try again', 'danger');
             renderLoginHome();
@@ -103,22 +154,27 @@ async function renderLoginHome(){
           toast('Identity verified — access granted ✓', 'ok');
           setTimeout(() => nav('dashboard'), 500);
         },
-        onCancel: renderLoginHome,
+        onCancel: () => {
+          renderLoginHome();
+          if (btn) { btn.disabled = false; btn.innerHTML = `${iconSvg('face')} Secure Face Login`; }
+        },
         onFailure: (err) => {
           console.warn('[Face Login] Verification failed:', err);
         }
       });
 
-
-    } catch (e) {
+    } catch (_e) {
       console.error('Challenge error:', e);
       toast(`Biometric server unreachable at ${API}. Ensure 'npm start' is running on port 3000.`, 'danger');
       renderLoginHome();
+      if (btn) { btn.disabled = false; btn.innerHTML = `${iconSvg('face')} Secure Face Login`; }
     }
   };
 
-  /* ---------- PIN LOGIN ---------- */
-  document.getElementById('pinLoginBtn').onclick = () => {
+  const pinLogin = () => {
+    const box = document.getElementById('loginBox');
+    const btn = document.getElementById('pinLoginBtn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Loading...'; }
     box.innerHTML = `
       <div class="auth-head">
         <h2>Enter your PIN</h2>
@@ -126,23 +182,28 @@ async function renderLoginHome(){
       </div>
       <div class="field">
         <div class="pin-wrap">
-          <input type="password" id="loginPin" maxlength="6" placeholder="••••" autofocus>
-          <button type="button" class="pin-toggle" id="lpToggle">Show</button>
+          <input type="password" id="loginPin" maxlength="6" placeholder="••••" autofocus autocomplete="off" aria-label="Enter your 4-6 digit PIN">
+          <button type="button" class="pin-toggle" id="lpToggle" aria-label="Toggle PIN visibility">Show</button>
         </div>
         <div class="err" id="lpErr">Incorrect PIN.</div>
       </div>
-      <button class="btn btn-primary btn-block" id="lpSubmit">Sign in</button>
-      <button class="btn btn-ghost btn-block" style="margin-top:10px;" id="lpBack">Back</button>`;
+      <button class="btn btn-primary btn-block" id="lpSubmit" aria-label="Submit PIN to sign in">Sign in</button>
+      <button class="btn btn-ghost btn-block" style="margin-top:10px;" id="lpBack" aria-label="Go back to login options">Back</button>`;
 
     document.getElementById('lpToggle').onclick = () => {
       const i = document.getElementById('loginPin');
       i.type = i.type === 'password' ? 'text' : 'password';
     };
-    document.getElementById('lpBack').onclick = renderLoginHome;
+    document.getElementById('lpBack').onclick = () => {
+      renderLoginHome();
+      if (btn) { btn.disabled = false; btn.textContent = 'Use PIN instead'; }
+    };
 
     document.getElementById('lpSubmit').onclick = async () => {
+      const submitBtn = document.getElementById('lpSubmit');
       const p = val('loginPin');
       if (!p) { toast('Please enter your PIN', 'warn'); return; }
+      if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Signing in...'; }
 
       try {
         const res = await fetch(API + '/login', {
@@ -161,60 +222,53 @@ async function renderLoginHome(){
         if (!res.ok) {
           document.getElementById('lpErr').style.display = 'block';
           toast(d.error || 'Incorrect PIN', 'danger');
+          if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Sign in'; }
           return;
         }
 
         await State.load();
         toast('Welcome back', 'ok');
         nav('dashboard');
-      } catch (err) {
+      } catch (_err) {
         toast('Login request failed', 'danger');
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Sign in'; }
       }
     };
+    
+    if (btn) { btn.disabled = false; btn.textContent = 'Use PIN instead'; }
   };
 
-  /* ---------- SWITCH ACCOUNT ---------- */
-  document.getElementById('switchAccBtn').onclick = () => {
-    box.innerHTML = `
-      <div class="auth-head">
-        <h2>Select Account</h2>
-        <p>Enter phone number for the account</p>
-      </div>
-      <div class="field">
-        <label>Account Phone Number</label>
-        <input id="swPhone" placeholder="+91 XXXXX XXXXX" value="${targetUser.phone || ''}">
-      </div>
-      <button class="btn btn-primary btn-block" id="swSubmit">Select Account</button>
-      <button class="btn btn-ghost btn-block" style="margin-top:10px;" id="swBack">Back</button>`;
-
-    document.getElementById('swBack').onclick = renderLoginHome;
-    document.getElementById('swSubmit').onclick = () => {
-      const ph = val('swPhone');
-      if (!ph) { toast('Enter phone number', 'warn'); return; }
-      selectedLoginUser = { phone: ph, name: ph, id: targetUser.id };
-      renderLoginHome();
-    };
+  const switchAccount = () => {
+    window.selectedLoginUser = null;
+    renderLoginHome();
   };
 
-  /* ---------- EMERGENCY PIN ---------- */
-  document.getElementById('emgBtn').onclick = () => {
+  const emergencyPin = () => {
+    const box = document.getElementById('loginBox');
+    const btn = document.getElementById('emgBtn');
+    if (btn) { btn.disabled = true; btn.innerHTML = `${iconSvg('alert')} Loading...`; }
     box.innerHTML = `
       <div class="auth-head">
         <h2 style="color:var(--danger)">Emergency PIN</h2>
-        <p>Entering this PIN activates the covert emergency protocol</p>
+        <p>Entering this PIN activates the covert emergency protocol (DEMO)</p>
       </div>
       <div class="field">
         <div class="pin-wrap">
-          <input type="password" id="emgPin" maxlength="6" placeholder="••••">
+          <input type="password" id="emgPin" maxlength="6" placeholder="••••" aria-label="Enter your emergency PIN">
         </div>
       </div>
-      <button class="btn btn-danger btn-block" id="emgSubmit">Confirm</button>
-      <button class="btn btn-ghost btn-block" style="margin-top:10px;" id="emgBack">Back</button>`;
+      <button class="btn btn-danger btn-block" id="emgSubmit" aria-label="Confirm emergency PIN">Confirm</button>
+      <button class="btn btn-ghost btn-block" style="margin-top:10px;" id="emgBack" aria-label="Go back to login options">Back</button>`;
 
-    document.getElementById('emgBack').onclick = renderLoginHome;
+    document.getElementById('emgBack').onclick = () => {
+      renderLoginHome();
+      if (btn) { btn.disabled = false; btn.innerHTML = `${iconSvg('alert')} Emergency PIN`; }
+    };
     document.getElementById('emgSubmit').onclick = async () => {
+      const submitBtn = document.getElementById('emgSubmit');
       const ep = val('emgPin');
-      if (!ep) return;
+      if (!ep) {return;}
+      if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Confirming...'; }
 
       try {
         const res = await fetch(API + '/login', {
@@ -228,17 +282,79 @@ async function renderLoginHome(){
           triggerEmergencyMode(targetUser);
         } else {
           toast('Incorrect PIN', 'danger');
+          if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Confirm'; }
         }
-      } catch (err) {
+      } catch (_err) {
         toast('Connection error', 'danger');
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Confirm'; }
       }
     };
+    
+    if (btn) { btn.disabled = false; btn.innerHTML = `${iconSvg('alert')} Emergency PIN`; }
   };
+
+  const findAccount = async () => {
+    const btn = document.getElementById('findAccountBtn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Finding...'; }
+    const phone = normalizePhone(val('loginPhone').trim());
+    if (!phone) { toast('Enter your phone number', 'warn'); if (btn) { btn.disabled = false; btn.textContent = 'Find Account'; } return; }
+
+    // Look up user by phone number via API
+    try {
+      const res = await fetch(API + '/user/by-phone', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ phone })
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        toast(err.error || 'Account not found', 'danger');
+        if (btn) { btn.disabled = false; btn.textContent = 'Find Account'; }
+        return;
+      }
+
+      const userData = await res.json();
+      window.selectedLoginUser = {
+        id: userData.id,
+        name: userData.name,
+        phone: userData.phone
+      };
+      renderLoginHome();
+    } catch (_err) {
+      toast('Failed to look up account. Please try again.', 'danger');
+      if (btn) { btn.disabled = false; btn.textContent = 'Find Account'; }
+    }
+  };
+
+  const enrollFaceNow = () => renderEnrollFaceFlow(targetUser);
+
+  // Expose handlers as properties for onclick attributes
+  setupLoginButtons.faceLogin = faceLogin;
+  setupLoginButtons.pinLogin = pinLogin;
+  setupLoginButtons.switchAccount = switchAccount;
+  setupLoginButtons.emergencyPin = emergencyPin;
+  setupLoginButtons.findAccount = findAccount;
+  setupLoginButtons.enrollFaceNow = enrollFaceNow;
+
+  // Also attach directly to buttons for robustness
+  const faceBtn = document.getElementById('faceLoginBtn');
+  const pinBtn = document.getElementById('pinLoginBtn');
+  const switchBtn = document.getElementById('switchAccBtn');
+  const emgBtn = document.getElementById('emgBtn');
+  const findBtn = document.getElementById('findAccountBtn');
+  
+  if (faceBtn) {faceBtn.onclick = faceLogin;}
+  if (pinBtn) {pinBtn.onclick = pinLogin;}
+  if (switchBtn) {switchBtn.onclick = switchAccount;}
+  if (emgBtn) {emgBtn.onclick = emergencyPin;}
+  if (findBtn) {findBtn.onclick = findAccount;}
 }
 
 /* =========================================================
    ENROLL FACE ID FLOW
-========================================================= */
+   ========================================================= */
 function renderEnrollFaceFlow(user) {
   const box = document.getElementById('loginBox');
   box.innerHTML = `
@@ -249,7 +365,7 @@ function renderEnrollFaceFlow(user) {
     <div class="field">
       <label>Normal Account PIN</label>
       <div class="pin-wrap">
-        <input type="password" id="enrollPin" maxlength="6" placeholder="••••">
+        <input type="password" id="enrollPin" maxlength="6" placeholder="••••" autocomplete="off">
       </div>
     </div>
     <button class="btn btn-primary btn-block" id="enrollPinSubmit">Continue to Face Scan</button>
@@ -289,7 +405,7 @@ function renderEnrollFaceFlow(user) {
           }
           toast('Face ID enrolled successfully ✓', 'ok');
           setTimeout(renderLoginHome, 1000);
-        } catch (err) {
+        } catch (_err) {
           toast('Enrollment failed: network error', 'danger');
           renderLoginHome();
         }
@@ -301,15 +417,15 @@ function renderEnrollFaceFlow(user) {
 
 /* =========================================================
    EMERGENCY MODE
-========================================================= */
-function triggerEmergencyMode(targetUser){
+   ========================================================= */
+function triggerEmergencyMode(targetUser) {
   const user = targetUser || State.user || { name: 'Account Holder' };
-  const eventId = 'SOS-ICASH-2026-' + Math.floor(10000+Math.random()*89999);
-  State.logEvent('Emergency', 'Emergency PIN detected — SOS protocol simulated ('+eventId+')');
+  const eventId = 'SOS-ICASH-2026-' + Math.floor(10000 + Math.random() * 89999);
+  State.logEvent('Emergency', 'Emergency PIN detected — SOS protocol simulated (' + eventId + ')');
   const scr = el(`
-  <div class="emergency-screen">
+  <div class="emergency-screen" role="dialog" aria-modal="true" aria-labelledby="emgTitle">
     <div class="glass emg-card">
-      <div class="emg-title">${iconSvg('alert')} EMERGENCY MODE ACTIVATED</div>
+      <div class="emg-title" id="emgTitle">${iconSvg('alert')} EMERGENCY MODE ACTIVATED</div>
       <div class="emg-sub">SOS SIGNAL INITIATED — DEMO / SIMULATED</div>
       <div class="emg-row"><span>User</span><b>${user.name}</b></div>
       <div class="emg-row"><span>Status</span><b style="color:var(--danger)">Emergency PIN detected</b></div>
@@ -327,15 +443,15 @@ function triggerEmergencyMode(targetUser){
     </div>
   </div>`);
   document.body.appendChild(scr);
-  ['a1','a2','a3','a4'].forEach((id,i)=> setTimeout(()=>{ scr.querySelector('#'+id).innerHTML = '<span style="color:var(--success)">✓</span>'; }, 500+i*450));
-  scr.querySelector('#safeBtn').onclick = ()=>{
+  ['a1', 'a2', 'a3', 'a4'].forEach((id, i) => setTimeout(() => { scr.querySelector('#' + id).innerHTML = '<span style="color:var(--success)">✓</span>'; }, 500 + i * 450));
+  scr.querySelector('#safeBtn').onclick = () => {
     openModal(`
       <div class="auth-head"><h2>Confirm return to safe mode</h2><p>Re-enter your normal PIN to exit emergency mode</p></div>
-      <div class="field"><input type="password" id="safePin" maxlength="6" placeholder="Normal PIN"></div>
+      <div class="field"><input type="password" id="safePin" maxlength="6" placeholder="Normal PIN" autocomplete="off"></div>
       <button class="btn btn-primary btn-block" id="safeConfirm">Confirm</button>
       <button class="btn btn-ghost btn-block" style="margin-top:10px;" id="safeCancel">Cancel</button>`);
     document.getElementById('safeCancel').onclick = closeModal;
-    document.getElementById('safeConfirm').onclick = async ()=>{
+    document.getElementById('safeConfirm').onclick = async () => {
       const sp = val('safePin');
       try {
         const res = await fetch(API + '/login', {
@@ -348,7 +464,7 @@ function triggerEmergencyMode(targetUser){
         closeModal(); scr.remove();
         await State.load();
         nav('dashboard');
-      } catch (e) {
+      } catch (_e) {
         toast('Verification error', 'danger');
       }
     };

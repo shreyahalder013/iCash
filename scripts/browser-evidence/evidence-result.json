@@ -1,0 +1,188 @@
+{
+  "timestamp": "2026-10-15T05:59:18.503Z",
+  "serverUrl": "http://localhost:4000",
+  "cspHeader": "default-src 'self';base-uri 'self';font-src 'self' https://fonts.gstatic.com;form-action 'self';frame-ancestors 'self';img-src 'self' data: blob:;object-src 'none';script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://cdnjs.cloudflare.com;script-src-attr 'none';style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;upgrade-insecure-requests;connect-src 'self';media-src 'self' blob:;frame-src 'none';worker-src 'self' blob:",
+  "directInitResult": {
+    "success": true,
+    "constructorName": "oc"
+  },
+  "uiStatus": {
+    "statusText": "Face not detected. Look at the camera.",
+    "cameraMsg": null,
+    "errCamera": null,
+    "cspViolations": []
+  },
+  "recordedViolations": [],
+  "networkRequestsSample": [
+    {
+      "url": "http://localhost:4000/vendor/mediapipe/face_mesh.js",
+      "method": "GET"
+    },
+    {
+      "url": "http://localhost:4000/vendor/mediapipe/face_mesh.js",
+      "status": 200,
+      "contentType": "application/javascript; charset=UTF-8"
+    },
+    {
+      "url": "http://localhost:4000/vendor/mediapipe/face_mesh_solution_packed_assets_loader.js?v=csp_evidence",
+      "method": "GET"
+    },
+    {
+      "url": "http://localhost:4000/vendor/mediapipe/face_mesh_solution_simd_wasm_bin.js?v=csp_evidence",
+      "method": "GET"
+    },
+    {
+      "url": "http://localhost:4000/vendor/mediapipe/face_mesh.binarypb?v=csp_evidence",
+      "method": "GET"
+    },
+    {
+      "url": "http://localhost:4000/vendor/mediapipe/face_mesh_solution_packed_assets_loader.js?v=csp_evidence",
+      "status": 200,
+      "contentType": "application/javascript; charset=UTF-8"
+    },
+    {
+      "url": "http://localhost:4000/vendor/mediapipe/face_mesh_solution_packed_assets.data?v=csp_evidence",
+      "method": "GET"
+    },
+    {
+      "url": "http://localhost:4000/vendor/mediapipe/face_mesh.binarypb?v=csp_evidence",
+      "status": 200,
+      "contentType": "application/octet-stream"
+    },
+    {
+      "url": "http://localhost:4000/vendor/mediapipe/face_mesh_solution_packed_assets.data?v=csp_evidence",
+      "status": 200,
+      "contentType": "application/octet-stream"
+    },
+    {
+      "url": "http://localhost:4000/vendor/mediapipe/face_mesh_solution_simd_wasm_bin.js?v=csp_evidence",
+      "status": 200,
+      "contentType": "application/javascript; charset=utf-8",
+      "xCspPatched": "mediapipe"
+    },
+    {
+      "url": "http://localhost:4000/vendor/mediapipe/face_mesh_solution_simd_wasm_bin.wasm?v=csp_evidence",
+      "method": "GET"
+    },
+    {
+      "url": "http://localhost:4000/vendor/mediapipe/face_mesh_solution_simd_wasm_bin.wasm?v=csp_evidence",
+      "status": 200,
+      "contentType": "application/wasm"
+    },
+    {
+      "url": "http://localhost:4000/models/tiny_face_detector_model-weights_manifest.json",
+      "method": "HEAD"
+    },
+    {
+      "url": "http://localhost:4000/models/tiny_face_detector_model-weights_manifest.json",
+      "status": 200,
+      "contentType": "application/json; charset=UTF-8"
+    },
+    {
+      "url": "http://localhost:4000/models/tiny_face_detector_model.bin",
+      "method": "HEAD"
+    },
+    {
+      "url": "http://localhost:4000/models/tiny_face_detector_model.bin",
+      "status": 200,
+      "contentType": "application/octet-stream"
+    },
+    {
+      "url": "http://localhost:4000/models/face_landmark_68_model-weights_manifest.json",
+      "method": "HEAD"
+    },
+    {
+      "url": "http://localhost:4000/models/face_landmark_68_model-weights_manifest.json",
+      "status": 200,
+      "contentType": "application/json; charset=UTF-8"
+    },
+    {
+      "url": "http://localhost:4000/models/face_landmark_68_model.bin",
+      "method": "HEAD"
+    },
+    {
+      "url": "http://localhost:4000/models/face_landmark_68_model.bin",
+      "status": 200,
+      "contentType": "application/octet-stream"
+    },
+    {
+      "url": "http://localhost:4000/models/face_recognition_model-weights_manifest.json",
+      "method": "HEAD"
+    },
+    {
+      "url": "http://localhost:4000/models/face_recognition_model-weights_manifest.json",
+      "status": 200,
+      "contentType": "application/json; charset=UTF-8"
+    },
+    {
+      "url": "http://localhost:4000/models/face_recognition_model.bin",
+      "method": "HEAD"
+    },
+    {
+      "url": "http://localhost:4000/models/face_recognition_model.bin",
+      "status": 200,
+      "contentType": "application/octet-stream"
+    },
+    {
+      "url": "http://localhost:4000/models/tiny_face_detector_model-weights_manifest.json",
+      "method": "GET"
+    },
+    {
+      "url": "http://localhost:4000/models/face_landmark_68_model-weights_manifest.json",
+      "method": "GET"
+    },
+    {
+      "url": "http://localhost:4000/models/face_recognition_model-weights_manifest.json",
+      "method": "GET"
+    },
+    {
+      "url": "http://localhost:4000/models/face_recognition_model-weights_manifest.json",
+      "status": 200,
+      "contentType": "application/json; charset=UTF-8"
+    },
+    {
+      "url": "http://localhost:4000/models/tiny_face_detector_model-weights_manifest.json",
+      "status": 200,
+      "contentType": "application/json; charset=UTF-8"
+    },
+    {
+      "url": "http://localhost:4000/models/face_landmark_68_model-weights_manifest.json",
+      "status": 200,
+      "contentType": "application/json; charset=UTF-8"
+    }
+  ],
+  "consoleLogsSample": [
+    {
+      "type": "log",
+      "text": "[FaceMesh] Calling faceMesh.initialize()..."
+    },
+    {
+      "type": "log",
+      "text": "[FaceMesh] faceMesh.initialize() completed successfully!"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "type": "log",
+      "text": "[FaceMesh] Initializing..."
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "type": "log",
+      "text": "[FaceMesh] Initialized successfully"
+    }
+  ]
+}

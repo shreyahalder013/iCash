@@ -1,21 +1,18 @@
 /* =========================================================
    ICASH — ATM Simulation (SECURE)
 
-   SECURITY FIX (VULN-1): The original ATM used mountFaceScanner with NO
-   accountId, NO server challenge, and NO identity verification. Any face
-   that completed the blink challenge was admitted. This has been rewritten
-   to use the same full cryptographic challenge-response pipeline as the
-   main login page.
-========================================================= */
-route('atm', function(){
-  if(!requireAuth()) return;
+   Uses the same full cryptographic challenge-response pipeline as the
+   main login page. No face authentication without server-verified challenge.
+   ========================================================= */
+route('atm', function() {
+  if (!requireAuth()) {return;}
   navbar();
   const shell = el(`<div class="auth-shell"><div class="glass auth-card" id="atmBox" style="background:linear-gradient(160deg,#0d1b26,#080b11); border-color:var(--border-hi);"></div></div>`);
   mount(shell);
   renderAtmWelcome();
 });
 
-function renderAtmWelcome(){
+function renderAtmWelcome() {
   const box = document.getElementById('atmBox');
   box.innerHTML = `
     <div class="auth-head"><div class="eyebrow" style="justify-content:center;">iCASH ATM · DEMO KIOSK</div><h2 style="margin-top:8px;">Welcome to iCash</h2><p>No card needed — authenticate with your face</p></div>
@@ -30,8 +27,6 @@ function renderAtmWelcome(){
       <div style="text-align:center; padding:30px;"><div class="dot" style="margin:0 auto; width:28px; height:28px; border:2px solid var(--accent); border-top-color:transparent; border-radius:50%; animation:spin 1s linear infinite;"></div></div>`;
 
     try {
-      // SECURITY: Request account-bound cryptographic challenge, same as login flow.
-      // This ties the biometric scan to THIS user's enrolled template.
       const targetUserId = State.user && State.user.id;
       if (!targetUserId) {
         toast('No authenticated account found. Please log in first.', 'danger');
@@ -39,11 +34,14 @@ function renderAtmWelcome(){
         return;
       }
 
+      // Generate a session nonce to bind this challenge to a specific scan session
+      const sessionNonce = crypto.randomUUID ? crypto.randomUUID() : (Date.now().toString(36) + Math.random().toString(36).slice(2));
+
       const res = await fetch(API + '/auth/biometric/challenge', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ accountId: targetUserId })
+        body: JSON.stringify({ accountId: targetUserId, sessionNonce })
       });
       const data = await res.json();
 
@@ -67,16 +65,20 @@ function renderAtmWelcome(){
         return;
       }
 
+      const safeName = esc(State.user?.name ?? 'User');
+      const firstName = safeName.split(' ')[0];
+
       // Mount the scanner with the account-bound challenge
       box.innerHTML = `
         <div class="auth-head">
           <h2>ATM Biometric Verification</h2>
-          <p>Verifying identity for <b>${State.user.name}</b></p>
+          <p>Verifying identity for <b>${safeName}</b></p>
         </div>
         <div id="atmFaceHolder"></div>`;
 
       mountFaceScanner(document.getElementById('atmFaceHolder'), {
         challenge: data,  // ← account-bound server challenge
+        sessionNonce: sessionNonce,
         onSuccess: (authData) => {
           // SECURITY: Verify server confirmed identity before showing balance
           if (!authData || authData.success !== true) {
@@ -86,8 +88,8 @@ function renderAtmWelcome(){
           }
 
           box.innerHTML = `
-            <div class="auth-head"><h2>Welcome, ${State.user.name.split(' ')[0]}</h2><p>Available balance</p></div>
-            <div class="balance-amt" style="text-align:center; margin-bottom:20px;">${fmtINR(State.balance)}</div>
+            <div class="auth-head"><h2>Welcome, ${firstName}</h2><p>Available balance</p></div>
+            <div class="balance-amt" style="text-align:center; margin-bottom:20px;">${fmtINR(State.balancePaise)}</div>
             <div class="qa-grid" style="grid-template-columns:repeat(2,1fr);">
               <button class="card qa" onclick="nav('withdraw')">${iconSvg('withdraw')}<span>Withdraw</span></button>
               <button class="card qa" onclick="toast('Demo deposits aren\\'t enabled in this prototype','warn')">${iconSvg('receive')}<span>Deposit</span></button>

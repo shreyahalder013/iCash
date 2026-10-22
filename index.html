@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>iCash — Bank Without Your Card</title>
 <meta name="description" content="iCash: Cardless face-authenticated banking. Withdraw, send, and manage money securely without a physical card.">
+<link rel="icon" href="data:,">
 
 <!-- Fonts -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -20,8 +21,8 @@
 <!-- Chart.js (for analytics) -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 
-<!-- MediaPipe Face Mesh (for real-time 3D tracking & liveness) -->
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+<!-- MediaPipe Face Mesh (for real-time 3D tracking & liveness) - Served locally for production -->
+<script src="/vendor/mediapipe/face_mesh.js"></script>
 
 <!-- Face-API.js (for 128-d neural face recognition descriptors) -->
 <script src="js/libs/face-api.min.js"></script>
@@ -54,7 +55,7 @@
 <!-- Boot -->
 <script>
   if(!location.hash) location.hash = '#landing';
-  render();
+  // Boot is handled in app.js: State.load() then render()
 </script>
 </body>
 </html>
